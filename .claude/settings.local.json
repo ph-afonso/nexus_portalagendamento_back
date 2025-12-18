@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet build)",
+      "Bash(dotnet build:*)",
+      "Bash(find:*)",
+      "Bash(dotnet clean:*)",
+      "Bash(rm:*)",
+      "WebFetch(domain:aka.ms)",
+      "WebFetch(domain:learn.microsoft.com)",
+      "Bash(dotnet restore:*)",
+      "Bash(dotnet run:*)"
+    ],
+    "deny": []
+  }
+}

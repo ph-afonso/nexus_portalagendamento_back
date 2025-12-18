@@ -1,0 +1,6 @@
+@Nexus.ReportGen.MinimalApi_HostAddress = http://localhost:5068
+
+GET {{Nexus.ReportGen.MinimalApi_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

@@ -1,0 +1,78 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>684e16e3-d87f-4f96-ab59-a1f52f455791</UserSecretsId>
+    <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Endpoints\RelatorioCategoria\**" />
+    <Compile Remove="Endpoints\RelatorioDestinoTipo\**" />
+    <Compile Remove="Endpoints\RelatorioLog\**" />
+    <Compile Remove="Endpoints\RelatorioModeloDestino\**" />
+    <Compile Remove="Endpoints\RelatorioModeloParametro\**" />
+    <Compile Remove="Endpoints\RelatorioModeloPermissao\**" />
+    <Compile Remove="Endpoints\RelatorioModeloSaida\**" />
+    <Compile Remove="Endpoints\RelatorioModelo\**" />
+    <Compile Remove="Endpoints\RelatorioParametroOpcao\**" />
+    <Compile Remove="Endpoints\RelatorioSolicitacaoDestino\**" />
+    <Compile Remove="Endpoints\RelatorioSolicitacao\**" />
+    <Compile Remove="Endpoints\StatusProcessamento\**" />
+    <Compile Remove="Endpoints\TipoParametro\**" />
+    <Content Remove="Endpoints\RelatorioCategoria\**" />
+    <Content Remove="Endpoints\RelatorioDestinoTipo\**" />
+    <Content Remove="Endpoints\RelatorioLog\**" />
+    <Content Remove="Endpoints\RelatorioModeloDestino\**" />
+    <Content Remove="Endpoints\RelatorioModeloParametro\**" />
+    <Content Remove="Endpoints\RelatorioModeloPermissao\**" />
+    <Content Remove="Endpoints\RelatorioModeloSaida\**" />
+    <Content Remove="Endpoints\RelatorioModelo\**" />
+    <Content Remove="Endpoints\RelatorioParametroOpcao\**" />
+    <Content Remove="Endpoints\RelatorioSolicitacaoDestino\**" />
+    <Content Remove="Endpoints\RelatorioSolicitacao\**" />
+    <Content Remove="Endpoints\StatusProcessamento\**" />
+    <Content Remove="Endpoints\TipoParametro\**" />
+    <EmbeddedResource Remove="Endpoints\RelatorioCategoria\**" />
+    <EmbeddedResource Remove="Endpoints\RelatorioDestinoTipo\**" />
+    <EmbeddedResource Remove="Endpoints\RelatorioLog\**" />
+    <EmbeddedResource Remove="Endpoints\RelatorioModeloDestino\**" />
+    <EmbeddedResource Remove="Endpoints\RelatorioModeloParametro\**" />
+    <EmbeddedResource Remove="Endpoints\RelatorioModeloPermissao\**" />
+    <EmbeddedResource Remove="Endpoints\RelatorioModeloSaida\**" />
+    <EmbeddedResource Remove="Endpoints\RelatorioModelo\**" />
+    <EmbeddedResource Remove="Endpoints\RelatorioParametroOpcao\**" />
+    <EmbeddedResource Remove="Endpoints\RelatorioSolicitacaoDestino\**" />
+    <EmbeddedResource Remove="Endpoints\RelatorioSolicitacao\**" />
+    <EmbeddedResource Remove="Endpoints\StatusProcessamento\**" />
+    <EmbeddedResource Remove="Endpoints\TipoParametro\**" />
+    <None Remove="Endpoints\RelatorioCategoria\**" />
+    <None Remove="Endpoints\RelatorioDestinoTipo\**" />
+    <None Remove="Endpoints\RelatorioLog\**" />
+    <None Remove="Endpoints\RelatorioModeloDestino\**" />
+    <None Remove="Endpoints\RelatorioModeloParametro\**" />
+    <None Remove="Endpoints\RelatorioModeloPermissao\**" />
+    <None Remove="Endpoints\RelatorioModeloSaida\**" />
+    <None Remove="Endpoints\RelatorioModelo\**" />
+    <None Remove="Endpoints\RelatorioParametroOpcao\**" />
+    <None Remove="Endpoints\RelatorioSolicitacaoDestino\**" />
+    <None Remove="Endpoints\RelatorioSolicitacao\**" />
+    <None Remove="Endpoints\StatusProcessamento\**" />
+    <None Remove="Endpoints\TipoParametro\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.7" />
+    <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.22.1" />
+    <PackageReference Include="Scalar.AspNetCore" Version="2.6.1" />
+    <PackageReference Include="Scalar.AspNetCore.Microsoft" Version="2.6.1" />
+    <PackageReference Include="Scalar.AspNetCore.Swashbuckle" Version="2.6.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nexus.ReportGen.Library\Nexus.ReportGen.Library.csproj" />
+  </ItemGroup>
+
+</Project>
