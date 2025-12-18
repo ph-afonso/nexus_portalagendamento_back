@@ -10,8 +10,8 @@ FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
 # Copia MinimalApi E Library (dependência)
-COPY Nexus.ReportGen.MinimalApi/ ./Nexus.ReportGen.MinimalApi/
-COPY Nexus.ReportGen.Library/ ./Nexus.ReportGen.Library/
+COPY Nexus.PortalAgendamento.MinimalApi/ ./Nexus.PortalAgendamento.MinimalApi/
+COPY Nexus.PortalAgendamento.Library/ ./Nexus.PortalAgendamento.Library/
 COPY nuget.config ./
 
 RUN echo "PAT recebido: ${FEED_PAT}"
@@ -24,7 +24,7 @@ RUN dotnet nuget update source Feed-Tragetta \
     --configfile nuget.config
 
 # Restore e Build
-WORKDIR /src/Nexus.ReportGen.MinimalApi
+WORKDIR /src/Nexus.PortalAgendamento.MinimalApi
 RUN dotnet restore
 RUN dotnet build -c Release -o /app/build
 
@@ -36,4 +36,4 @@ RUN dotnet publish -c Release -o /app/publish /p:UseAppHost=false
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
-ENTRYPOINT ["dotnet", "Nexus.ReportGen.MinimalApi.dll"]
+ENTRYPOINT ["dotnet", "Nexus.PortalAgendamento.MinimalApi.dll"]
