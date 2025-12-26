@@ -1,6 +1,17 @@
+ï»¿using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using System.IO;
+using System.Collections.Generic;
+// Importando todo o stack do Nexus para garantir
+using Nexus.Framework.Common;
+using Nexus.Framework.Data;
 using Nexus.Framework.Data.Model.Result;
 using Nexus.PortalAgendamento.Library.Infrastructure.Domain.InputModel;
+using Nexus.PortalAgendamento.Library.Infrastructure.Domain.ListModel;
+using Nexus.PortalAgendamento.Library.Infrastructure.Helper;
 using Nexus.PortalAgendamento.Library.Infrastructure.Repository.Interfaces;
 using Nexus.PortalAgendamento.Library.Infrastructure.Services.Interfaces;
 
@@ -10,90 +21,99 @@ public class PortalAgendamentoService : IPortalAgendamentoService
 {
     private readonly IPortalAgendamentoRepository _repository;
     private readonly ILogger<PortalAgendamentoService> _logger;
+    private readonly PdfHelper _pdfHelper;
 
     public PortalAgendamentoService(
         IPortalAgendamentoRepository repository,
-        ILogger<PortalAgendamentoService> logger)
+        ILogger<PortalAgendamentoService> logger,
+        PdfHelper pdfHelper)
     {
         _repository = repository;
         _logger = logger;
+        _pdfHelper = pdfHelper;
     }
 
-    // --- ROTA 1: CONFIRMAR ---
-    public async Task<NexusResult<bool>> Confirmar(ConfirmarAgendamentoInputModel model, CancellationToken ct)
+    public async Task<ClienteOutputModel?> GetCliente(Guid? identificadorCliente, CancellationToken cancellationToken = default)
     {
-        if (!await ValidarTokenInterno(model.IdentificadorCliente, ct))
-            return RetornarErroExpirado();
-
-        return await _repository.ConfirmarAgendamento(model, ct);
+        var result = await _repository.GetCliente(identificadorCliente, cancellationToken);
+        return result.ResultData;
     }
 
-    // --- ROTA 2: SOLICITAR NOVA DATA ---
-    public async Task<NexusResult<bool>> SolicitarNovaData(SolicitarNovaDataInputModel model, CancellationToken ct)
+    public async Task<PortalAgendamentoOutputModel?> GetDataAgendamentoConfirmacao(Guid? identificadorCliente, CancellationToken cancellationToken = default)
     {
-        if (!await ValidarTokenInterno(model.IdentificadorCliente, ct))
-            return RetornarErroExpirado();
-
-        return await _repository.SolicitarNovaData(model, ct);
+        var result = await _repository.GetDataAgendamentoConfirmacao(identificadorCliente, cancellationToken);
+        return result.ResultData;
     }
 
-    // --- ROTA 3: POSSUO ANEXO ---
-    public async Task<NexusResult<bool>> EnviarAnexo(EnviarAnexoInputModel model, CancellationToken ct)
+    public async Task<PortalAgendamentoOutputModel?> GetNotasConhecimento(Guid? identificadorCliente, CancellationToken cancellationToken = default)
     {
-        if (!await ValidarTokenInterno(model.IdentificadorCliente, ct))
-            return RetornarErroExpirado();
+        var result = await _repository.GetNotasConhecimento(identificadorCliente, cancellationToken);
+        return result.ResultData;
+    }
 
-        if (model.Arquivo == null || model.Arquivo.Length == 0)
+    public async Task<PortalAgendamentoOutputModel?> GetValidadeToken(Guid? identificadorCliente, CancellationToken cancellationToken = default)
+    {
+        var result = await _repository.GetValidadeToken(identificadorCliente, cancellationToken);
+        return result.ResultData;
+    }
+
+    public async Task<NexusResult<bool>> CreateVoucherTratativa(Guid identificadorCliente, IFormFile file, CancellationToken cancellationToken = default)
+    {
+        return await _repository.CreateVoucherTratativaAsync(identificadorCliente, file, cancellationToken);
+    }
+
+    public async Task<NexusResult<PortalAgendamentoInputModel>> UpdateDataAgendamento(PortalAgendamentoInputModel model, CancellationToken cancellationToken = default)
+    {
+        return await _repository.UpdateDataAgendamento(model, cancellationToken);
+    }
+
+    public async Task<NexusResult<EmailPostFixInputModel>> SendEmailAnexo(Guid? identificadorCliente, IFormFile file, CancellationToken cancellationToken = default)
+    {
+        return await _repository.SendEmailAnexo(identificadorCliente, file, cancellationToken);
+    }
+
+    public async Task<PortalAgendamentoOutputModel?> GetDataAgendamentoPdf(IFormFile? file, CancellationToken cancellationToken = default)
+    {
+        if (file == null || file.Length == 0)
+            return null;
+
+        var tempPath = Path.GetTempFileName();
+        try
         {
-            var res = new NexusResult<bool>();
-            res.AddFailureMessage("Arquivo inválido.");
-            return res;
+            using (var stream = File.Create(tempPath))
+            {
+                await file.CopyToAsync(stream, cancellationToken);
+            }
+
+            var imagens = _pdfHelper.ConverterPdfParaImagens(tempPath);
+            var datasEncontradas = new List<DateTime>();
+
+            foreach (var img in imagens)
+            {
+                var caminhoPre = _pdfHelper.PreprocessarImagemParaOCR(img);
+                if (caminhoPre != null)
+                {
+                    var texto = _pdfHelper.ExtrairTextoDeImagem(caminhoPre);
+                    var datas = _pdfHelper.ExtrairDatasDoTexto(texto);
+                    datasEncontradas.AddRange(datas);
+
+                    try { File.Delete(caminhoPre); } catch { }
+                }
+
+                try { File.Delete(img); } catch { }
+            }
+
+            return PdfHelper.CriarResultado(datasEncontradas);
         }
-
-        // Define onde salvar (ajuste conforme seu servidor)
-        var tempPath = Path.GetTempPath();
-        var fileName = $"{model.IdentificadorCliente}_{Guid.NewGuid()}_{model.Arquivo.FileName}";
-        var fullPath = Path.Combine(tempPath, fileName);
-
-        using (var stream = new FileStream(fullPath, FileMode.Create))
+        catch (Exception ex)
         {
-            await model.Arquivo.CopyToAsync(stream, ct);
+            _logger.LogError(ex, "Erro ao processar PDF de agendamento.");
+            return null;
         }
-
-        return await _repository.RegistrarAnexo(model.IdentificadorCliente, fullPath, ct);
-    }
-
-    // --- MÉTODOS PRIVADOS (Blindagem) ---
-
-    private async Task<bool> ValidarTokenInterno(Guid guid, CancellationToken ct)
-    {
-        var result = await _repository.GetDadosValidacaoToken(guid, ct);
-
-        // Se não achou no banco ou deu erro
-        if (!result.IsSuccess || result.ResultData == null) return false;
-
-        // Dynamic para facilitar a leitura das colunas SQL
-        dynamic dados = result.ResultData;
-
-        // Se tiver alteração, usa ela. Se não, usa inclusão.
-        // Cuidado com Nulos vindo do Dapper dynamic
-        DateTime? dtInc = dados.DT_INCLUSAO;
-        DateTime? dtAlt = dados.DT_ALTERACAO;
-
-        DateTime dataBase = dtAlt ?? dtInc ?? DateTime.MinValue;
-
-        if (dataBase == DateTime.MinValue) return false;
-
-        // Regra de 48 horas
-        if (DateTime.Now > dataBase.AddHours(48)) return false;
-
-        return true;
-    }
-
-    private NexusResult<bool> RetornarErroExpirado()
-    {
-        var res = new NexusResult<bool>();
-        res.AddFailureMessage("O link de agendamento expirou.");
-        return res;
+        finally
+        {
+            if (File.Exists(tempPath))
+                try { File.Delete(tempPath); } catch { }
+        }
     }
 }
