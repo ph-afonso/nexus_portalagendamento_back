@@ -1,10 +1,11 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Nexus.Framework.Common;
+using Nexus.Framework.Data.Model.Result;
+using Nexus.PortalAgendamento.Library.Infrastructure.Domain.InputModel;
+using Nexus.PortalAgendamento.Library.Infrastructure.Domain.ListModel;
+using Nexus.PortalAgendamento.Library.Infrastructure.Services;
 using Nexus.PortalAgendamento.Library.Infrastructure.Services.Interfaces;
 using Nexus.PortalAgendamento.MinimalApi.Common;
-using Nexus.PortalAgendamento.Library.Infrastructure.Domain.ListModel;
-using Nexus.PortalAgendamento.Library.Infrastructure.Domain.InputModel;
-using Nexus.PortalAgendamento.Library.Infrastructure.Services;
 
 namespace Nexus.PortalAgendamento.MinimalApi.Endpoints.PortalAgendamento;
 
@@ -34,11 +35,14 @@ public class GetValidadeTokenEndpoint : IEndpoint
         {
             var dataValidade = await portalAgendamentoService.GetValidadeToken(identificadorCliente, cancellationToken);
 
-            result.ResultData = dataValidade ?? new PortalAgendamentoOutputModel();
-            if (result.ResultData?.DataValidade is null)
+            var output = dataValidade ?? new PortalAgendamentoOutputModel();
+
+            if (output.DataValidade is null)
             {
-                result.ResultData.TokenValido = false;
+                output.TokenValido = false;
             }
+
+            result.ResultData = output;
             result.AddDefaultSuccessMessage();
             return Results.Ok(result);
         }

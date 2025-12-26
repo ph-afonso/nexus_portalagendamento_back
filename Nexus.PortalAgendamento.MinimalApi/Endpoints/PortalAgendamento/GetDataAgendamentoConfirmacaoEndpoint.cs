@@ -5,7 +5,6 @@ using Nexus.PortalAgendamento.MinimalApi.Common;
 using Nexus.PortalAgendamento.Library.Infrastructure.Domain.ListModel;
 using Nexus.PortalAgendamento.Library.Infrastructure.Domain.InputModel;
 using Nexus.PortalAgendamento.Library.Infrastructure.Services;
-using Nexus.PortalAgendamento.Library.Infrastructure.Domain.ListModel;
 
 namespace Nexus.PortalAgendamento.MinimalApi.Endpoints.PortalAgendamento;
 

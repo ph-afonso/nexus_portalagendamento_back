@@ -6,7 +6,7 @@ using Nexus.Framework.Data.Model.Input;
 namespace Nexus.PortalAgendamento.Library.Infrastructure.Domain.InputModel;
 
 /// <summary>
-/// Modelo de entrada para operações de Bancos
+/// Modelo de entrada para atualização de Agendamento
 /// </summary>
 public class PortalAgendamentoInputModel : StoredProcedureInputModel
 {
@@ -20,7 +20,7 @@ public class PortalAgendamentoInputModel : StoredProcedureInputModel
     public int? CodUsuarios { get; set; }
 
     /// <summary>
-    /// Gets or sets the operation identifier associated with the current context.
+    /// Operação a ser realizada (U = Update)
     /// </summary>
     [NexusParameter("OPERACAO")]
     [Required]
@@ -28,6 +28,7 @@ public class PortalAgendamentoInputModel : StoredProcedureInputModel
 
     public PortalAgendamentoInputModel()
     {
+        // Define a procedure que será chamada pelo Repository automaticamente
         _commandName = "Program.dbo.APP_DT_SUGESTAO_AGENDA_PORTAL_AGENDAMENTO";
     }
 }

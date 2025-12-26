@@ -1,8 +1,8 @@
-﻿// Endpoints/PortalAgendamento/CreateVoucherTratativaEndpoint.cs
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Nexus.Framework.Common;
-using Nexus.PortalAgendamento.MinimalApi.Common;
+using Nexus.Framework.Data.Model.Result;
 using Nexus.PortalAgendamento.Library.Infrastructure.Services.Interfaces;
+using Nexus.PortalAgendamento.MinimalApi.Common;
 
 namespace Nexus.PortalAgendamento.MinimalApi.Endpoints.PortalAgendamento;
 
@@ -36,7 +36,7 @@ public class CreateVoucherTratativaEndpoint : IEndpoint
                 return Results.BadRequest(result);
             }
 
-            var op = await portalAgendamentoService.CreateVoucherTratativaAsync(identificadorCliente, request, cancellationToken);
+            var op = await portalAgendamentoService.CreateVoucherTratativa(identificadorCliente, request, cancellationToken);
 
             if (!op.IsSuccess)
             {

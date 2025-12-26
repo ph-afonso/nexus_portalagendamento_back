@@ -1,7 +1,4 @@
-﻿Com certeza! Aqui está a versão final do **README.md**, formatada profissionalmente e pronta para ser copiada.
-
-```markdown
-# 📅 Nexus.PortalAgendamento.MinimalApi
+﻿# 📅 Nexus.PortalAgendamento
 
 ![Build Status](https://img.shields.io/badge/Build-Passing-success?style=for-the-badge&logo=appveyor)
 ![.NET](https://img.shields.io/badge/.NET-8.0%2F9.0-512BD4?style=for-the-badge&logo=dotnet)
@@ -127,9 +124,5 @@ Nexus.PortalAgendamento
     │   ├── 📂 Repository                  # Acesso a Dados
     │   └── 📂 Services                    # Regras de Negócio
     └── 📄 ServiceCollectionExtensions.cs  # Injeção de Dependência da Library
-
-```
-
-```
 
 ```

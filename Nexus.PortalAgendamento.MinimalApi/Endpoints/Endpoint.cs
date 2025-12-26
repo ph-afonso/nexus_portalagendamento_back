@@ -16,7 +16,7 @@ public static class Endpoint
         // 2. Grupo Principal da API (Prefixo: /apis.portalagendamento/v1)
         var endpoints = app
             .MapGroup("apis.portalagendamento")
-            .MapGroup("v1") // Já emenda o v1 aqui para ficar limpo
+            .MapGroup("v1")
             .WithTags("PortalAgendamento");
 
         // 3. Mapeamento dos Endpoints de Negócio
