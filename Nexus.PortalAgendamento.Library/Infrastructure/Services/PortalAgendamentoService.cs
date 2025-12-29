@@ -39,21 +39,9 @@ public class PortalAgendamentoService : IPortalAgendamentoService
         return result.ResultData;
     }
 
-    public async Task<PortalAgendamentoOutputModel?> GetDataAgendamentoConfirmacao(Guid? identificadorCliente, CancellationToken cancellationToken = default)
-    {
-        var result = await _repository.GetDataAgendamentoConfirmacao(identificadorCliente, cancellationToken);
-        return result.ResultData;
-    }
-
     public async Task<PortalAgendamentoOutputModel?> GetNotasConhecimento(Guid? identificadorCliente, CancellationToken cancellationToken = default)
     {
         var result = await _repository.GetNotasConhecimento(identificadorCliente, cancellationToken);
-        return result.ResultData;
-    }
-
-    public async Task<PortalAgendamentoOutputModel?> GetValidadeToken(Guid? identificadorCliente, CancellationToken cancellationToken = default)
-    {
-        var result = await _repository.GetValidadeToken(identificadorCliente, cancellationToken);
         return result.ResultData;
     }
 
@@ -115,5 +103,37 @@ public class PortalAgendamentoService : IPortalAgendamentoService
             if (File.Exists(tempPath))
                 try { File.Delete(tempPath); } catch { }
         }
+    }
+
+    //NOVOS
+    public async Task<NexusResult<ValidadeTokenOutputModel>> ValidarTokenAsync(ValidadeTokenInputModel model, CancellationToken cancellationToken = default)
+    {
+        // 1. Chama o Repositório (que busca DtInclusao e DtAlteracao)
+        var result = await _repository.ValidarTokenAsync(model, cancellationToken);
+
+        // Se o repositório falhou ou não achou dados, repassa o erro/falha
+        if (!result.IsSuccess || result.ResultData == null)
+        {
+            return result;
+        }
+
+        var output = result.ResultData;
+
+        // 2. Aplica a Regra de Negócio
+        // Como o 'output.DataVencimento' é uma propriedade calculada (Alteração ?? Inclusão + 48h),
+        // só precisamos verificar se ela existe e comparar com Agora.
+
+        if (output.DataExpiracaoToken.HasValue)
+        {
+            output.TokenValido = DateTime.Now <= output.DataExpiracaoToken.Value;
+        }
+        else
+        {
+            // Se não tem datas (banco inconsistente), é inválido por segurança
+            output.TokenValido = false;
+        }
+
+        // O objeto 'result' mantém a referência ao 'output', então já está atualizado.
+        return result;
     }
 }

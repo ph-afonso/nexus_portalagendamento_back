@@ -10,7 +10,7 @@ public static class Endpoint
     public static void MapEndpoints(this WebApplication app)
     {
         // 1. Health Check Global (Acessível na raiz "http://localhost:xxxx/")
-        app.MapGet("/", () => new { status= "online", message = "API Portal Agendamentos V1", timestamp = DateTime.Now })
+        app.MapGet("/", () => new { status = "online", message = "API Portal Agendamentos V1", timestamp = DateTime.Now })
            .WithTags("Health Check");
 
         // 2. Grupo Principal da API (Prefixo: /apis.portalagendamento/v1)
@@ -22,11 +22,12 @@ public static class Endpoint
         // 3. Mapeamento dos Endpoints de Negócio
         CreateVoucherTratativaEndpoint.Map(endpoints);
         GetClienteEndpoint.Map(endpoints);
-        GetDataAgendamentoConfirmacaoEndpoint.Map(endpoints);
         GetDataAgendamentoPdfEndpoint.Map(endpoints);
         GetNotasConhecimentoEndpoint.Map(endpoints);
-        GetValidadeTokenEndpoint.Map(endpoints);
         UpdateDataAgendamentoEndpoint.Map(endpoints);
         SendEmailAnexoEndpoint.Map(endpoints);
+
+        // --- NOVO ENDPOINT ---
+        ConfirmacaoEndpoint.Map(endpoints);
     }
 }

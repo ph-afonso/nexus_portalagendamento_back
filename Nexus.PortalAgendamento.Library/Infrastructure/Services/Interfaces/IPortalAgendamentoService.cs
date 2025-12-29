@@ -15,10 +15,9 @@ public interface IPortalAgendamentoService
 {
     // Consultas
     Task<ClienteOutputModel?> GetCliente(Guid? identificadorCliente, CancellationToken cancellationToken = default);
-    Task<PortalAgendamentoOutputModel?> GetDataAgendamentoConfirmacao(Guid? identificadorCliente, CancellationToken cancellationToken = default);
     Task<PortalAgendamentoOutputModel?> GetDataAgendamentoPdf(IFormFile? file, CancellationToken cancellationToken = default);
     Task<PortalAgendamentoOutputModel?> GetNotasConhecimento(Guid? identificadorCliente, CancellationToken cancellationToken = default);
-    Task<PortalAgendamentoOutputModel?> GetValidadeToken(Guid? identificadorCliente, CancellationToken cancellationToken = default);
+    Task<NexusResult<ValidadeTokenOutputModel>> ValidarTokenAsync(ValidadeTokenInputModel model, CancellationToken cancellationToken = default);
 
     // Comandos
     Task<NexusResult<bool>> CreateVoucherTratativa(Guid identificadorCliente, IFormFile file, CancellationToken cancellationToken = default);

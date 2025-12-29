@@ -12,7 +12,9 @@ using Nexus.PortalAgendamento.Library.Infrastructure.Domain.InputModel;
 using Nexus.PortalAgendamento.Library.Infrastructure.Domain.ListModel;
 using Nexus.PortalAgendamento.Library.Infrastructure.Helper;
 using Nexus.PortalAgendamento.Library.Infrastructure.Repository.Interfaces;
+using SkiaSharp;
 using System.Data;
+using System.Threading;
 
 namespace Nexus.PortalAgendamento.Library.Infrastructure.Repository;
 
@@ -80,51 +82,6 @@ public class PortalAgendamentoRepository : ProcedureRepository, IPortalAgendamen
             _logger.LogError(ex, "GetCliente -> Erro: {id}", identificadorCliente);
             var nexusError = new NexusResult<ClienteOutputModel>();
             nexusError.AddFailureMessage($"Erro ao consultar dados: {ex.Message}");
-            return nexusError;
-        }
-    }
-
-    public async Task<NexusResult<PortalAgendamentoOutputModel>> GetDataAgendamentoConfirmacao(Guid? identificadorCliente, CancellationToken cancellationToken = default)
-    {
-        var nexus = new NexusResult<PortalAgendamentoOutputModel>();
-
-        if (identificadorCliente == null || identificadorCliente == Guid.Empty)
-        {
-            nexus.AddFailureMessage("IdentificadorCliente é obrigatório.");
-            return nexus;
-        }
-
-        try
-        {
-            var cs = await _conn.GetDefaultConnectionStringAsync();
-            await using var connection = new SqlConnection(cs);
-            await connection.OpenAsync(cancellationToken);
-
-            string sql = @"
-                        SELECT TC.DT_SUGESTAO_AGENDAMENTO AS DataAgendamento
-                        FROM NewSitex.dbo.TB_PORTAL_AGENDAMENTO_DPA PAD
-                            INNER JOIN NewSitex.dbo.TB_CONHECIMENTOS AS TC
-                                ON PAD.ID_CONHECIMENTOS = TC.ID
-                        WHERE IDENTIFICADOR_CLIENTES = @IdentificadorCliente";
-
-            var cmd = new CommandDefinition(sql, new { IdentificadorCliente = identificadorCliente }, commandType: CommandType.Text, cancellationToken: cancellationToken);
-            var row = await connection.QueryFirstOrDefaultAsync<PortalAgendamentoOutputModel>(cmd);
-
-            if (row is null)
-            {
-                nexus.AddFailureMessage("Nenhum registro encontrado.");
-                return nexus;
-            }
-
-            nexus.AddData(row);
-            nexus.AddDefaultSuccessMessage();
-            return nexus;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "GetDataAgendamentoConfirmacao -> Erro");
-            var nexusError = new NexusResult<PortalAgendamentoOutputModel>();
-            nexusError.AddFailureMessage($"Erro: {ex.Message}");
             return nexusError;
         }
     }
@@ -432,5 +389,59 @@ public class PortalAgendamentoRepository : ProcedureRepository, IPortalAgendamen
         nexus.AddData(model);
         nexus.AddDefaultSuccessMessage();
         return nexus;
+    }
+
+    //NOVOS
+    public async Task<NexusResult<ValidadeTokenOutputModel>> ValidarTokenAsync(ValidadeTokenInputModel model, CancellationToken cancellationToken = default)
+    {
+        var nexus = new NexusResult<ValidadeTokenOutputModel>();
+
+        if (model == null || model.IdentificadorCliente == Guid.Empty)
+        {
+            nexus.AddFailureMessage("Identificador do cliente é obrigatório.");
+            return nexus;
+        }
+
+        try
+        {
+            var cs = await _conn.GetDefaultConnectionStringAsync();
+            await using var connection = new SqlConnection(cs);
+            await connection.OpenAsync(cancellationToken);
+
+            // --- CORREÇÃO: TOP 1 + ORDER BY DESC ---
+            // Isso garante que pegamos a última alteração/inclusão, e não um registro velho perdido
+            const string sql = @"
+            SELECT TOP 1
+                 DT_GERACAO_TOKEN        AS DataGeracaoToken
+                ,DT_ATUALIZACAO_TOKEN    AS DataAtualizacaoToken
+                ,DT_SUGESTAO_AGENDAMENTO AS DataSugestaoAgendamento
+            FROM 
+                NewSitex.dbo.TB_PORTAL_AGENDAMENTO_DPA
+            WHERE 
+                IDENTIFICADOR_CLIENTES = @IdentificadorCliente
+            ORDER BY 
+                ISNULL(DT_ATUALIZACAO_TOKEN, DT_GERACAO_TOKEN) DESC";
+
+            var cmd = new CommandDefinition(sql, new { IdentificadorCliente = model.IdentificadorCliente }, commandType: CommandType.Text, cancellationToken: cancellationToken);
+
+            var row = await connection.QueryFirstOrDefaultAsync<ValidadeTokenOutputModel>(cmd);
+
+            if (row is null)
+            {
+                nexus.AddFailureMessage("Nenhum registro encontrado.");
+                return nexus;
+            }
+
+            nexus.AddData(row);
+            nexus.AddDefaultSuccessMessage();
+            return nexus;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "ValidarTokenAsync -> Erro");
+            var nexusError = new NexusResult<ValidadeTokenOutputModel>();
+            nexusError.AddFailureMessage($"Erro: {ex.Message}");
+            return nexusError;
+        }
     }
 }
