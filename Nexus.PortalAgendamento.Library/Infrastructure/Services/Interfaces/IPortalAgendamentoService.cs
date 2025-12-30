@@ -22,5 +22,10 @@ public interface IPortalAgendamentoService
     // Comandos
     Task<NexusResult<bool>> CreateVoucherTratativa(Guid identificadorCliente, IFormFile file, CancellationToken cancellationToken = default);
     Task<NexusResult<PortalAgendamentoInputModel>> UpdateDataAgendamento(PortalAgendamentoInputModel model, CancellationToken cancellationToken = default);
-    Task<NexusResult<EmailPostFixInputModel>> SendEmailAnexo(Guid? identificadorCliente, IFormFile file, CancellationToken cancellationToken = default);
+    //Task<NexusResult<EmailPostFixInputModel>> SendEmailAnexo(Guid? identificadorCliente, IFormFile file, CancellationToken cancellationToken = default);
+    Task<NexusResult<List<AgendamentoDetalheModel>>> ConfirmarAgendamento(
+        Guid identificadorCliente,
+        DateTime dataAgendamento,
+        List<NotaFiscalOutputModel> notas,
+        CancellationToken cancellationToken = default);
 }

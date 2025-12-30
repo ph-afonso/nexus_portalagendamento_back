@@ -45,6 +45,13 @@ namespace Nexus.PortalAgendamento.Library.Infrastructure.Domain.ListModel
         [NexusParameter("COD_CLIENTES_RECEBEDOR")]
         public int? CodClientesRecebedor { get; set; }
 
+        [NexusParameter("COD_FILIAIS")]
+        public int? CodFiliais { get; set; }
+
+        [NexusParameter("NR_IMPRESSO_CONHECIMENTOS")]
+        public int? NrImpressoConhecimentos { get; set; }
+        internal bool IsReagendamento { get; set; } = false;
+
 
     }
 

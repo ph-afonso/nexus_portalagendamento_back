@@ -25,7 +25,7 @@ public static class Endpoint
         GetDataAgendamentoPdfEndpoint.Map(endpoints);
         GetNotasConhecimentoEndpoint.Map(endpoints);
         UpdateDataAgendamentoEndpoint.Map(endpoints);
-        SendEmailAnexoEndpoint.Map(endpoints);
+        //SendEmailAnexoEndpoint.Map(endpoints);
 
         // --- NOVO ENDPOINT ---
         ConfirmacaoEndpoint.Map(endpoints);
