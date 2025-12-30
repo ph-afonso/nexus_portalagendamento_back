@@ -18,17 +18,17 @@ public class PortalAgendamentoRepository : ProcedureRepository, IPortalAgendamen
 {
     private readonly IServiceBase _serviceBase;
     private readonly IConnectionStringProvider _conn;
-    private readonly ILogger<ProcedureRepository> _logger; // Logger original
+    private readonly ILogger<PortalAgendamentoRepository> _log;
 
     public PortalAgendamentoRepository(
         IConnectionStringProvider connectionStringProvider,
-        ILogger<ProcedureRepository> logger,
+        ILogger<PortalAgendamentoRepository> logger, // <--- CORREÇÃO AQUI: Tipo correto
         IServiceBase serviceBase)
         : base(connectionStringProvider, logger)
     {
         _serviceBase = serviceBase ?? throw new ArgumentNullException(nameof(serviceBase));
         _conn = connectionStringProvider ?? throw new ArgumentNullException(nameof(connectionStringProvider));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _log = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     // 1. VALIDAR TOKEN
@@ -76,7 +76,7 @@ public class PortalAgendamentoRepository : ProcedureRepository, IPortalAgendamen
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "ValidarTokenAsync -> Erro");
+            _log.LogError(ex, "ValidarTokenAsync -> Erro");
             nexus.AddFailureMessage($"Erro: {ex.Message}");
             return nexus;
         }
@@ -142,7 +142,7 @@ public class PortalAgendamentoRepository : ProcedureRepository, IPortalAgendamen
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "GetNotasConhecimento -> Erro");
+            _log.LogError(ex, "GetNotasConhecimento -> Erro");
             nexus.AddFailureMessage($"Erro: {ex.Message}");
             return nexus;
         }
@@ -190,7 +190,7 @@ public class PortalAgendamentoRepository : ProcedureRepository, IPortalAgendamen
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "GetOcorrenciaAbertaAsync -> Erro Nota: {Nota}", nrNota);
+            _log.LogError(ex, "GetOcorrenciaAbertaAsync -> Erro Nota: {Nota}", nrNota);
             return null;
         }
     }
@@ -223,7 +223,7 @@ public class PortalAgendamentoRepository : ProcedureRepository, IPortalAgendamen
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "EncerrarOcorrenciaMassaAsync -> Erro Id: {Id}", ocorrencia.IdOcorrencia);
+            _log.LogError(ex, "EncerrarOcorrenciaMassaAsync -> Erro Id: {Id}", ocorrencia.IdOcorrencia);
             throw;
         }
     }
@@ -291,7 +291,7 @@ public class PortalAgendamentoRepository : ProcedureRepository, IPortalAgendamen
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "RealizarAgendamentoAsync -> Erro");
+            _log.LogError(ex, "RealizarAgendamentoAsync -> Erro");
             nexus.AddFailureMessage($"Erro: {ex.Message}");
             return nexus;
         }
@@ -317,7 +317,7 @@ public class PortalAgendamentoRepository : ProcedureRepository, IPortalAgendamen
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "GetDestinatariosEmailAsync -> Erro");
+            _log.LogError(ex, "GetDestinatariosEmailAsync -> Erro");
             return new List<ClientesRegrasAgendamentoEmail>();
         }
     }
@@ -346,11 +346,11 @@ public class PortalAgendamentoRepository : ProcedureRepository, IPortalAgendamen
                 CAMINHO_ARQUIVO = input.CaminhoArquivo
             }, commandType: CommandType.StoredProcedure);
 
-            _logger.LogInformation("EnviarEmailPostfixAsync -> Email enviado.");
+            _log.LogInformation("EnviarEmailPostfixAsync -> Email enviado.");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "EnviarEmailPostfixAsync -> Erro");
+            _log.LogError(ex, "EnviarEmailPostfixAsync -> Erro");
         }
     }
 }
