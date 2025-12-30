@@ -20,14 +20,6 @@ public static class Endpoint
             .WithTags("PortalAgendamento");
 
         // 3. Mapeamento dos Endpoints de Negócio
-        CreateVoucherTratativaEndpoint.Map(endpoints);
-        GetClienteEndpoint.Map(endpoints);
-        GetDataAgendamentoPdfEndpoint.Map(endpoints);
-        GetNotasConhecimentoEndpoint.Map(endpoints);
-        UpdateDataAgendamentoEndpoint.Map(endpoints);
-        //SendEmailAnexoEndpoint.Map(endpoints);
-
-        // --- NOVO ENDPOINT ---
         ConfirmacaoEndpoint.Map(endpoints);
     }
 }

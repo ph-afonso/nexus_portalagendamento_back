@@ -1,21 +1,12 @@
-﻿using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Logging;
-using System;
-using System.Threading;
-using System.Threading.Tasks;
-using System.IO;
-using System.Collections.Generic;
-// Importando todo o stack do Nexus para garantir
+﻿using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
 using Nexus.Framework.Common;
-using Nexus.Framework.Data;
 using Nexus.Framework.Data.Model.Result;
+using Nexus.PortalAgendamento.Library.Infrastructure.Common;
 using Nexus.PortalAgendamento.Library.Infrastructure.Domain.InputModel;
 using Nexus.PortalAgendamento.Library.Infrastructure.Domain.ListModel;
-using Nexus.PortalAgendamento.Library.Infrastructure.Helper;
 using Nexus.PortalAgendamento.Library.Infrastructure.Repository.Interfaces;
 using Nexus.PortalAgendamento.Library.Infrastructure.Services.Interfaces;
-using Newtonsoft.Json;
-using Nexus.PortalAgendamento.Library.Infrastructure.Common;
 
 namespace Nexus.PortalAgendamento.Library.Infrastructure.Services;
 
@@ -23,124 +14,51 @@ public class PortalAgendamentoService : IPortalAgendamentoService
 {
     private readonly IPortalAgendamentoRepository _repository;
     private readonly ILogger<PortalAgendamentoService> _logger;
-    private readonly PdfHelper _pdfHelper;
 
     public PortalAgendamentoService(
         IPortalAgendamentoRepository repository,
-        ILogger<PortalAgendamentoService> logger,
-        PdfHelper pdfHelper)
+        ILogger<PortalAgendamentoService> logger)
     {
         _repository = repository;
         _logger = logger;
-        _pdfHelper = pdfHelper;
     }
 
-    public async Task<ClienteOutputModel?> GetCliente(Guid? identificadorCliente, CancellationToken cancellationToken = default)
+    public async Task<PortalAgendamentoOutputModel?> GetNotasConhecimento(Guid? identificadorCliente, CancellationToken ct)
+        => (await _repository.GetNotasConhecimento(identificadorCliente, ct)).ResultData;
+
+    // --- CORREÇÃO AQUI: Lógica de Validação do Token ---
+    public async Task<NexusResult<ValidadeTokenOutputModel>> ValidarTokenAsync(ValidadeTokenInputModel model, CancellationToken ct)
     {
-        var result = await _repository.GetCliente(identificadorCliente, cancellationToken);
-        return result.ResultData;
-    }
+        // 1. Busca dados no repositório
+        var result = await _repository.ValidarTokenAsync(model, ct);
 
-    public async Task<NexusResult<bool>> CreateVoucherTratativa(Guid identificadorCliente, IFormFile file, CancellationToken cancellationToken = default)
-    {
-        return await _repository.CreateVoucherTratativaAsync(identificadorCliente, file, cancellationToken);
-    }
-
-    public async Task<NexusResult<PortalAgendamentoInputModel>> UpdateDataAgendamento(PortalAgendamentoInputModel model, CancellationToken cancellationToken = default)
-    {
-        return await _repository.UpdateDataAgendamento(model, cancellationToken);
-    }
-
-    //public async Task<NexusResult<EmailPostFixInputModel>> SendEmailAnexo(Guid? identificadorCliente, IFormFile file, CancellationToken cancellationToken = default)
-    //{
-    //    return await _repository.SendEmailAnexo(identificadorCliente, file, cancellationToken);
-    //}
-
-    public async Task<PortalAgendamentoOutputModel?> GetDataAgendamentoPdf(IFormFile? file, CancellationToken cancellationToken = default)
-    {
-        if (file == null || file.Length == 0)
-            return null;
-
-        var tempPath = Path.GetTempFileName();
-        try
+        // 2. Aplica regra de negócio (Data Atual vs Validade)
+        if (result.IsSuccess && result.ResultData != null)
         {
-            using (var stream = File.Create(tempPath))
+            var token = result.ResultData;
+
+            // Se tem data de expiração e ela é maior que agora, o token é válido
+            if (token.DataExpiracaoToken.HasValue && DateTime.Now <= token.DataExpiracaoToken.Value)
             {
-                await file.CopyToAsync(stream, cancellationToken);
+                token.TokenValido = true;
             }
-
-            var imagens = _pdfHelper.ConverterPdfParaImagens(tempPath);
-            var datasEncontradas = new List<DateTime>();
-
-            foreach (var img in imagens)
+            else
             {
-                var caminhoPre = _pdfHelper.PreprocessarImagemParaOCR(img);
-                if (caminhoPre != null)
-                {
-                    var texto = _pdfHelper.ExtrairTextoDeImagem(caminhoPre);
-                    var datas = _pdfHelper.ExtrairDatasDoTexto(texto);
-                    datasEncontradas.AddRange(datas);
-
-                    try { File.Delete(caminhoPre); } catch { }
-                }
-
-                try { File.Delete(img); } catch { }
+                token.TokenValido = false; // Expirado ou data inválida
             }
-
-            return PdfHelper.CriarResultado(datasEncontradas);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Erro ao processar PDF de agendamento.");
-            return null;
-        }
-        finally
-        {
-            if (File.Exists(tempPath))
-                try { File.Delete(tempPath); } catch { }
-        }
-    }
-
-    //NOVOS
-    public async Task<NexusResult<ValidadeTokenOutputModel>> ValidarTokenAsync(ValidadeTokenInputModel model, CancellationToken cancellationToken = default)
-    {
-        // 1. Chama o Repositório (que busca DtInclusao e DtAlteracao)
-        var result = await _repository.ValidarTokenAsync(model, cancellationToken);
-
-        // Se o repositório falhou ou não achou dados, repassa o erro/falha
-        if (!result.IsSuccess || result.ResultData == null)
-        {
-            return result;
         }
 
-        var output = result.ResultData;
-
-        // 2. Aplica a Regra de Negócio
-        // Como o 'output.DataVencimento' é uma propriedade calculada (Alteração ?? Inclusão + 48h),
-        // só precisamos verificar se ela existe e comparar com Agora.
-
-        if (output.DataExpiracaoToken.HasValue)
-        {
-            output.TokenValido = DateTime.Now <= output.DataExpiracaoToken.Value;
-        }
-        else
-        {
-            // Se não tem datas (banco inconsistente), é inválido por segurança
-            output.TokenValido = false;
-        }
-
-        // O objeto 'result' mantém a referência ao 'output', então já está atualizado.
         return result;
     }
 
-    public async Task<PortalAgendamentoOutputModel?> GetNotasConhecimento(Guid? identificadorCliente, CancellationToken cancellationToken = default)
+    public async Task<NexusResult<List<AgendamentoDetalheModel>>> ConfirmarAgendamento(
+        Guid identificadorCliente,
+        DateTime dataAgendamento,
+        List<NotaFiscalOutputModel> notas,
+        CancellationToken ct = default)
     {
-        var result = await _repository.GetNotasConhecimento(identificadorCliente, cancellationToken);
-        return result.ResultData;
-    }
+        _logger.LogInformation("[Service] Iniciando confirmação para ClienteGUID: {Guid}. Qtd Notas: {Qtd}", identificadorCliente, notas.Count);
 
-    public async Task<NexusResult<List<AgendamentoDetalheModel>>> ConfirmarAgendamento(Guid identificadorCliente, DateTime dataAgendamento, List<NotaFiscalOutputModel> notas, CancellationToken cancellationToken = default)
-    {
         var nexus = new NexusResult<List<AgendamentoDetalheModel>>();
         var listaResultados = new List<AgendamentoDetalheModel>();
         var notasAptasParaBanco = new List<NotaFiscalOutputModel>();
@@ -149,110 +67,72 @@ public class PortalAgendamentoService : IPortalAgendamentoService
         string horaFmt = "08:00";
 
         // -----------------------------------------------------------------------
-        // PASSO 1: VALIDAÇÃO INDIVIDUAL
+        // FASE 1: VALIDAÇÃO (Regras de Ocorrências)
         // -----------------------------------------------------------------------
         foreach (var nota in notas)
         {
             if (nota.NrNotasFiscais == null || nota.CodFiliais == null) continue;
 
-            // --- ATUALIZAÇÃO 1: Preenchendo dados completos para a tabela de email ---
-            var detalhe = new AgendamentoDetalheModel
+            var detalhe = CriarDetalheBase(nota);
+
+            try
             {
-                NrNota = nota.NrNotasFiscais.Value,
-                Serie = nota.NrSerieNotasFiscais ?? "",
-                Pedido = nota.NrPedido ?? "-",
-                NomeFornecedor = nota.NomeFornecedor ?? "Indefinido",
-                NomeRecebedor = nota.NomeRecebedor ?? "Indefinido",
-                Agendado = false
-            };
+                var ocorrencia = await _repository.GetOcorrenciaAbertaAsync(nota.NrNotasFiscais.Value, nota.CodFiliais.Value, ct);
 
-            nota.IsReagendamento = false;
-
-            // Busca Ocorrência
-            var ocorrencia = await _repository.GetOcorrenciaAbertaAsync(nota.NrNotasFiscais.Value, nota.CodFiliais.Value, cancellationToken);
-
-            if (ocorrencia != null)
-            {
-                bool tentaEncerrar = false;
-
-                if (ocorrencia.CodOcorrenciaTipo == 140 || ocorrencia.CodOcorrenciaTipo == 145)
+                if (ocorrencia != null)
                 {
-                    tentaEncerrar = true;
-                }
-                else if (ocorrencia.CodOcorrenciaTipo == 91)
-                {
-                    bool mesmaData = ocorrencia.DataAgendamento.HasValue && ocorrencia.DataAgendamento.Value.Date == dataAgendamento.Date;
-                    bool mesmaHora = !string.IsNullOrEmpty(ocorrencia.HoraAgendamento) && ocorrencia.HoraAgendamento.Contains("08:00");
+                    var (podeEncerrar, mensagemBloqueio) = AnalisarOcorrencia(ocorrencia, dataAgendamento);
 
-                    if (mesmaData && mesmaHora)
+                    if (!string.IsNullOrEmpty(mensagemBloqueio))
                     {
-                        detalhe.Status = "Já Agendado";
-                        detalhe.Mensagem = "Nota já possui agendamento confirmado.";
-                        detalhe.DataAgendada = dataFmt;
-                        detalhe.HoraAgendada = horaFmt;
+                        detalhe.Status = mensagemBloqueio == "JÁ AGENDADO" ? "Já Agendado" : "Bloqueado";
+                        detalhe.Mensagem = mensagemBloqueio == "JÁ AGENDADO" ? "Nota já possui agendamento confirmado." : $"Impedimento: {ocorrencia.CodOcorrenciaTipo}";
+
+                        if (detalhe.Status == "Já Agendado")
+                        {
+                            detalhe.DataAgendada = dataFmt;
+                            detalhe.HoraAgendada = horaFmt;
+                        }
+
                         listaResultados.Add(detalhe);
                         continue;
                     }
 
-                    tentaEncerrar = true;
-                    nota.IsReagendamento = true;
-                }
-                else
-                {
-                    detalhe.Status = "Bloqueado";
-                    detalhe.Mensagem = $"Impedimento: Ocorrência {ocorrencia.CodOcorrenciaTipo} em aberto.";
-                    listaResultados.Add(detalhe);
-                    continue;
+                    if (podeEncerrar)
+                    {
+                        await _repository.EncerrarOcorrenciaMassaAsync(ocorrencia, ct);
+                        nota.IsReagendamento = (ocorrencia.CodOcorrenciaTipo == 91);
+                    }
                 }
 
-                if (tentaEncerrar)
-                {
-                    try
-                    {
-                        await _repository.EncerrarOcorrenciaMassaAsync(ocorrencia, cancellationToken);
-                    }
-                    catch (Exception ex)
-                    {
-                        detalhe.Status = "Erro Técnico";
-                        detalhe.Mensagem = $"Falha ao encerrar ocorrência {ocorrencia.CodOcorrenciaTipo}.";
-                        _logger.LogError(ex, "Falha encerramento nota {Nota}", nota.NrNotasFiscais);
-                        listaResultados.Add(detalhe);
-                        continue;
-                    }
-                }
+                notasAptasParaBanco.Add(nota);
             }
-
-            notasAptasParaBanco.Add(nota);
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[Service] Erro ao validar nota {Nota}", nota.NrNotasFiscais);
+                detalhe.Status = "Erro Técnico";
+                detalhe.Mensagem = "Falha na validação.";
+                listaResultados.Add(detalhe);
+            }
         }
 
         // -----------------------------------------------------------------------
-        // PASSO 2: GRAVAÇÃO EM MASSA
+        // FASE 2: PERSISTÊNCIA
         // -----------------------------------------------------------------------
         if (notasAptasParaBanco.Any())
         {
-            var inputRepo = new AgendamentoRepositoryInputModel
+            var resultRepo = await _repository.RealizarAgendamentoAsync(new AgendamentoRepositoryInputModel
             {
                 IdentificadorCliente = identificadorCliente,
                 DataAgendamento = dataAgendamento,
                 Notas = notasAptasParaBanco
-            };
-
-            var resultRepo = await _repository.RealizarAgendamentoAsync(inputRepo, cancellationToken);
+            }, ct);
 
             foreach (var notaApta in notasAptasParaBanco)
             {
-                // --- ATUALIZAÇÃO 2: Preenchendo dados completos também no sucesso ---
-                var detalhe = new AgendamentoDetalheModel
-                {
-                    NrNota = notaApta.NrNotasFiscais!.Value,
-                    Serie = notaApta.NrSerieNotasFiscais ?? "",
-                    Pedido = notaApta.NrPedido ?? "-",
-                    NomeFornecedor = notaApta.NomeFornecedor ?? "Indefinido",
-                    NomeRecebedor = notaApta.NomeRecebedor ?? "Indefinido",
-
-                    DataAgendada = dataFmt,
-                    HoraAgendada = horaFmt
-                };
+                var detalhe = CriarDetalheBase(notaApta);
+                detalhe.DataAgendada = dataFmt;
+                detalhe.HoraAgendada = horaFmt;
 
                 if (resultRepo.IsSuccess)
                 {
@@ -262,21 +142,19 @@ public class PortalAgendamentoService : IPortalAgendamentoService
                 }
                 else
                 {
-                    detalhe.Agendado = false;
                     detalhe.Status = "Erro Banco";
-                    detalhe.Mensagem = "Falha ao gravar agendamento no banco de dados.";
+                    detalhe.Mensagem = "Falha ao gravar.";
                 }
-
                 listaResultados.Add(detalhe);
             }
         }
 
         // -----------------------------------------------------------------------
-        // PASSO 3: ENVIAR EMAIL
+        // FASE 3: NOTIFICAÇÃO
         // -----------------------------------------------------------------------
         if (listaResultados.Any())
         {
-            await EnviarEmailResumoAsync(listaResultados, notas, dataAgendamento, cancellationToken);
+            await EnviarEmailResumoAsync(listaResultados, notas, dataAgendamento, ct);
         }
 
         nexus.AddData(listaResultados);
@@ -284,78 +162,87 @@ public class PortalAgendamentoService : IPortalAgendamentoService
         return nexus;
     }
 
-    // ------------------------------------------------------------------------------------------------
-    // MÉTODO ATUALIZADO: EnviarEmailResumoAsync (Serializa objetos e passa nome Solicitante)
-    // ------------------------------------------------------------------------------------------------
+    // --- MÉTODOS AUXILIARES ---
+
+    private AgendamentoDetalheModel CriarDetalheBase(NotaFiscalOutputModel nota)
+    {
+        return new AgendamentoDetalheModel
+        {
+            NrNota = nota.NrNotasFiscais ?? 0,
+            Serie = nota.NrSerieNotasFiscais ?? "",
+            Pedido = nota.NrPedido ?? "-",
+            NomeFornecedor = nota.NomeFornecedor ?? "Indefinido",
+            NomeRecebedor = nota.NomeRecebedor ?? "Indefinido",
+            Agendado = false
+        };
+    }
+
+    private (bool encerrar, string bloqueio) AnalisarOcorrencia(OcorrenciaAbertaModel ocorrencia, DateTime dataSolicitada)
+    {
+        if (ocorrencia.CodOcorrenciaTipo == 140 || ocorrencia.CodOcorrenciaTipo == 145)
+            return (true, "");
+
+        if (ocorrencia.CodOcorrenciaTipo == 91)
+        {
+            bool mesmaData = ocorrencia.DataAgendamento.HasValue && ocorrencia.DataAgendamento.Value.Date == dataSolicitada.Date;
+            bool mesmaHora = !string.IsNullOrEmpty(ocorrencia.HoraAgendamento) && ocorrencia.HoraAgendamento.Contains("08:00");
+
+            if (mesmaData && mesmaHora) return (false, "JÁ AGENDADO");
+
+            return (true, ""); // É Reagendamento
+        }
+
+        return (false, "OCORRENCIA_IMPEDITIVA");
+    }
+
     private async Task EnviarEmailResumoAsync(
-    List<AgendamentoDetalheModel> resultados,
-    List<NotaFiscalOutputModel> notasOriginais,
-    DateTime dataSugestao, // <--- NOVO PARÂMETRO
-    CancellationToken cancellationToken)
+        List<AgendamentoDetalheModel> resultados,
+        List<NotaFiscalOutputModel> notasOriginais,
+        DateTime dataSugestao,
+        CancellationToken ct)
     {
         try
         {
-            // 1. Obter dados
             var notaRef = notasOriginais.FirstOrDefault();
             if (notaRef == null) return;
 
-            var codFornecedor = notaRef.CodClientesFornecedor;
-            var codRecebedor = notaRef.CodClientesRecebedor;
+            var destinatarios = await _repository.GetDestinatariosEmailAsync(notaRef.CodClientesFornecedor, notaRef.CodClientesRecebedor, ct);
 
-            var nomeFornecedor = notaRef.NomeFornecedor ?? "Fornecedor";
-            var nomeRecebedor = notaRef.NomeRecebedor ?? "Recebedor";
-
-            // 2. Buscar Destinatários
-            var destinatarios = await _repository.GetDestinatariosEmailAsync(codFornecedor, codRecebedor, cancellationToken);
-
-            // 3. Filtra emails
-            var emails = destinatarios
+            var emailsTragetta = destinatarios
                 .Select(d => d.Email?.Trim())
-                .Where(e => !string.IsNullOrWhiteSpace(e) && e.Contains("@tragetta", StringComparison.OrdinalIgnoreCase))
+                .Where(e => !string.IsNullOrEmpty(e) && e.Contains("@tragetta", StringComparison.OrdinalIgnoreCase))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(e => new { Email = e, Nome = "Equipe Tragetta", Login = "" })
                 .ToList();
 
-            if (emails.Count == 0)
+            if (!emailsTragetta.Any())
             {
-                _logger.LogWarning("Resumo Agendamento: Nenhum destinatário @tragetta encontrado.");
+                _logger.LogWarning("[Service] Email ignorado: Nenhum destinatário @tragetta válido encontrado.");
                 return;
             }
 
-            var listaParaJson = emails.Select(e => new
-            {
-                Email = e,
-                Nome = "Equipe Tragetta",
-                Login = ""
-            }).ToList();
+            var nomeRecebedor = notaRef.NomeRecebedor ?? "Recebedor";
+            var nomeFornecedor = notaRef.NomeFornecedor ?? "Fornecedor";
 
-            // 4. Montar Assunto (USANDO A DATA DE SUGESTÃO)
-            // Antes era: DateTime.Now
-            var assunto = $"{nomeFornecedor} - PROCESSAMENTO DPA - {nomeRecebedor} - para {dataSugestao:dd/MM/yyyy}";
-
-            var htmlBody = EmailTemplateBuilder.BuildResumoProcessamento(resultados, nomeRecebedor);
-
-            // 5. Montar Input Model
             var model = new EmailPostFixInputModel
             {
-                DsAssunto = assunto,
-                DsMensagem = htmlBody,
+                DsAssunto = $"{nomeFornecedor} - PROCESSAMENTO DPA - {nomeRecebedor} - para {dataSugestao:dd/MM/yyyy}",
+                DsMensagem = EmailTemplateBuilder.BuildResumoProcessamento(resultados, nomeRecebedor),
                 FlMensagemHtml = true,
-                DestinatariosJson = JsonConvert.SerializeObject(listaParaJson),
+                DestinatariosJson = JsonConvert.SerializeObject(emailsTragetta),
                 EmailRemetente = "naoresponda@tragetta.srv.br",
                 LoginRemetenteUsuarios = "PORTAL_AGENDAMENTO",
                 CodEventos = null,
                 CodRemetentePessoa = null,
                 NmArquivo = null,
-                MimeType = null,
                 Arquivo = null
             };
 
-            // 6. Enviar
-            await _repository.EnviarEmailPostfixAsync(model, cancellationToken);
+            await _repository.EnviarEmailPostfixAsync(model, ct);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "EnviarEmailResumoAsync -> Falha ao enviar email.");
+            _logger.LogError(ex, "[Service] Falha não impeditiva no envio de email.");
         }
     }
 }

@@ -1,15 +1,18 @@
-namespace Nexus.PortalAgendamento.Library.Infrastructure.Domain.ListModel;
+namespace Nexus.PortalAgendamento.Library.Infrastructure.Domain.InputModel;
 
 public class OcorrenciaAbertaModel
 {
-    public int CodOcorrenciaTipo { get; set; }     // COD_OCORRENCIAS_TIPO_EJ
-    public int IdentFilial { get; set; }           // IDENT_FILIAIS
-    public int NrOcorrencia { get; set; }          // NR_OCORRENCIAS
-    public string? Observacao { get; set; }        // OBS_OCORRENCIAS
-    public DateTime? DataAgendamento { get; set; } // DT_AGENDAMENTO...
-    public string? HoraAgendamento { get; set; }   // HR_AGENDAMENTO...
+    // Identificador único (Primary Key da tabela de Ocorrências) - ADICIONADO
+    public int IdOcorrencia { get; set; }
 
-    // Propriedades auxiliares necessárias para o método de Encerramento
+    public int CodOcorrenciaTipo { get; set; }
+    public int IdentFilial { get; set; }
+    public long NrOcorrencia { get; set; }
+    public string Observacao { get; set; } = string.Empty;
+    public DateTime? DataAgendamento { get; set; }
+    public string HoraAgendamento { get; set; } = string.Empty;
+
+    // Dados para Encerramento
+    public int CodFilial { get; set; }
     public int CodConhecimentos { get; set; }
-    public int CodFilial { get; set; }             // COD_FILIAIS (Interno)
 }

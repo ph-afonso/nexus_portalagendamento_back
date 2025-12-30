@@ -93,7 +93,7 @@ public static class EmailTemplateBuilder
         int sucesso = resultados.Count(x => x.Agendado);
         int falha = total - sucesso;
 
-        // 1. CABEÇALHO HTML (ESTILO TRAGETTA)
+        // 1. CABEÇALHO HTML (ESTILO TRAGETTA COMPLETO)
         sb.Append("""
         <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
         <html xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
@@ -165,19 +165,24 @@ public static class EmailTemplateBuilder
         // INJETANDO DADOS DINÂMICOS
         sb.Append($"O processamento automático de agendamento foi finalizado em <b>{DateTime.Now:dd/MM/yyyy HH:mm}</b>.<br/><br/>");
 
-        // BOX DE RESUMO NUMÉRICO
-        sb.Append("<div style='background-color:#f9f9f9; padding:15px; border-left:4px solid #00b200;'>");
-        sb.Append($"<b>Total de Notas:</b> {total} &nbsp;|&nbsp; ");
-        sb.Append($"<span style='color:#28a745'><b>Sucesso:</b> {sucesso}</span> &nbsp;|&nbsp; ");
-        sb.Append($"<span style='color:#dc3545'><b>Bloqueadas:</b> {falha}</span>");
-        sb.Append("</div>");
-
         sb.Append("""
                                             </td>
                                         </tr>
 
                                         <tr>
-                                            <td class="table-scroll-wrapper" style="padding-bottom: 30px; padding-top: 20px;">
+                                            <td style="padding-bottom: 20px;">
+                                                <div style="background-color:#f9f9f9; padding:15px; border-left:4px solid #00b200;">
+        """);
+        sb.Append($"<b>Total:</b> {total} &nbsp;|&nbsp; ");
+        sb.Append($"<span style='color:#28a745'><b>Sucesso:</b> {sucesso}</span> &nbsp;|&nbsp; ");
+        sb.Append($"<span style='color:#dc3545'><b>Bloqueadas:</b> {falha}</span>");
+        sb.Append("""
+                                                </div>
+                                            </td>
+                                        </tr>
+
+                                        <tr>
+                                            <td class="table-scroll-wrapper" style="padding-bottom: 30px; padding-top: 10px;">
                                                 <table width="100%" border="0" cellpadding="5" cellspacing="0" style="border-collapse: collapse; border: 1px solid #eee;">
                                                     <thead>
                                                         <tr style="background-color: #f8f9fa; border-bottom: 2px solid #ddd;">
@@ -233,7 +238,7 @@ public static class EmailTemplateBuilder
                 </tr>");
         }
 
-        // RODAPÉ
+        // 3. RODAPÉ (Assinatura e Redes Sociais)
         sb.Append("""
                                                     </tbody>
                                                 </table>
