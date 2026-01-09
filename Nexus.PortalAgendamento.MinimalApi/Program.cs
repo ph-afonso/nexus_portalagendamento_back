@@ -4,11 +4,13 @@ using Nexus.Framework.Data;
 using Nexus.Framework.Logging;
 using Nexus.Framework.Vault;
 using Nexus.PortalAgendamento.Library.Infrastructure;
-using Nexus.PortalAgendamento.MinimalApi.Endpoints; 
+using Nexus.PortalAgendamento.MinimalApi.Endpoints;
 using Scalar.AspNetCore;
 using Serilog;
 using System.Net.Mime;
 using System.Text.Json;
+// ADICIONE ESTE USING SE AINDA NÃO TIVER:
+using Nexus.PortalAgendamento.Library.Infrastructure.Helper;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -44,6 +46,11 @@ if (builder.Configuration.GetValue<bool>("UseVaultCredentials", false))
 // Injeta os serviços do Portal (Bancos e Agendamento)
 builder.Services.AddApplicationInfrastructure();
 
+// --- CORREÇÃO AQUI ---
+// O registro deve acontecer ANTES do builder.Build()
+builder.Services.AddScoped<PdfHelper>();
+// ---------------------
+
 // 4. Configuração JSON (Remove conversão para camelCase se o banco usa PascalCase)
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
@@ -64,6 +71,9 @@ builder.Services.AddCors(options =>
 builder.Services.AddHealthChecks()
     .AddCheck("self", () => HealthCheckResult.Healthy());
 
+// =========================================================
+// O BUILD ACONTECE AQUI - TUDO DEVE SER REGISTRADO ACIMA
+// =========================================================
 var app = builder.Build();
 
 // Pipeline de Execução

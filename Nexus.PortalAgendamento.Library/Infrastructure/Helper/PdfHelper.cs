@@ -1,245 +1,123 @@
-﻿using Docnet.Core;
-using Docnet.Core.Models;
-using SkiaSharp;
-using System.Runtime.InteropServices;
-using OpenCvSharp;
-using Nexus.PortalAgendamento.Library.Infrastructure.Domain.ListModel;
-using System.Globalization;
+﻿using System.Text;
 using System.Text.RegularExpressions;
-using Tesseract;
+using iText.Kernel.Pdf;
+using iText.Kernel.Pdf.Canvas.Parser;
+using iText.Kernel.Pdf.Canvas.Parser.Listener;
 using Microsoft.Extensions.Logging;
+using System.Globalization;
 
-namespace Nexus.PortalAgendamento.Library.Infrastructure.Helper;
-
-public class PdfHelper
+namespace Nexus.PortalAgendamento.Library.Infrastructure.Helper
 {
-    private readonly ILogger<PdfHelper> _logger;
-
-    public PdfHelper(ILogger<PdfHelper> logger)
+    public class PdfHelper
     {
-        _logger = logger;
-    }
+        private readonly ILogger<PdfHelper> _logger;
 
-    /// <summary>
-    /// Converte um arquivo PDF para uma lista de imagens PNG.
-    /// </summary>
-    public List<string> ConverterPdfParaImagens(string caminhoPdf, int dpi = 300)
-    {
-        var caminhos = new List<string>();
-        var pastaSaida = Path.GetTempPath();
-
-        if (!File.Exists(caminhoPdf))
+        public PdfHelper(ILogger<PdfHelper> logger)
         {
-            _logger.LogError("ConverterPdfParaImagens -> Arquivo não encontrado: {caminhoPdf}", caminhoPdf);
-            return caminhos;
+            _logger = logger;
         }
 
-        try
+        // =========================================================================
+        // EXTRAÇÃO DE TEXTO NATIVO (iText7)
+        // =========================================================================
+        public (List<string> Datas, List<string> Horas) ExtrairDadosDoPdf(string caminhoPdf)
         {
-            using var docReader = DocLib.Instance.GetDocReader(caminhoPdf, new PageDimensions(dpi, dpi));
-            int totalPaginas = docReader.GetPageCount();
+            var datas = new HashSet<string>();
+            var horas = new HashSet<string>();
+            var textoCompleto = new StringBuilder();
 
-            for (int i = 0; i < totalPaginas; i++)
+            if (!File.Exists(caminhoPdf)) return (new List<string>(), new List<string>());
+
+            try
             {
-                using var pageReader = docReader.GetPageReader(i);
-                int width = pageReader.GetPageWidth();
-                int height = pageReader.GetPageHeight();
-
-                byte[] rawBytes = pageReader.GetImage();
-                using var bitmap = new SKBitmap(width, height, SKColorType.Rgba8888, SKAlphaType.Premul);
-
-                // Copia os pixels brutos para o Bitmap
-                var pixelsPtr = bitmap.GetPixels();
-                Marshal.Copy(rawBytes, 0, pixelsPtr, rawBytes.Length);
-
-                var caminhoImagem = Path.Combine(pastaSaida, $"pagina_{i + 1}_{Guid.NewGuid()}.png");
-
-                using var output = File.OpenWrite(caminhoImagem);
-                bitmap.Encode(SKEncodedImageFormat.Png, 100).SaveTo(output);
-
-                caminhos.Add(caminhoImagem);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Erro ao converter PDF para imagens.");
-
-            // Limpeza em caso de erro
-            foreach (var caminho in caminhos)
-            {
-                if (File.Exists(caminho)) File.Delete(caminho);
-            }
-            caminhos.Clear();
-            throw; // Re-lança para quem chamou saber que falhou
-        }
-
-        return caminhos;
-    }
-
-    public string? PreprocessarImagemParaOCR(string caminhoImagemOriginal)
-    {
-        var caminhoPreprocessado = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}_preprocessed.png");
-
-        try
-        {
-            using var src = new Mat(caminhoImagemOriginal, ImreadModes.Grayscale);
-
-            // Redimensionamento se a imagem for muito pequena
-            Mat resized = src;
-            bool needsDisposeResized = false;
-
-            if (src.Width < 1000 || src.Height < 1000)
-            {
-                resized = new Mat();
-                Cv2.Resize(src, resized, new OpenCvSharp.Size(src.Width * 2, src.Height * 2), 0, 0, InterpolationFlags.Cubic);
-                needsDisposeResized = true;
-            }
-
-            using var denoised = new Mat();
-            Cv2.FastNlMeansDenoising(resized, denoised, 10, 7, 21);
-
-            using var contrasted = new Mat();
-            Cv2.ConvertScaleAbs(denoised, contrasted, 1.2, 10); // Aumento de contraste
-
-            using var preprocessed = new Mat();
-            Cv2.AdaptiveThreshold(contrasted, preprocessed, 255,
-                AdaptiveThresholdTypes.GaussianC, ThresholdTypes.Binary, 11, 2);
-
-            // Reduz ruído (pontos isolados)
-            using var kernel = Cv2.GetStructuringElement(MorphShapes.Rect, new OpenCvSharp.Size(2, 2));
-            using var cleaned = new Mat();
-            Cv2.MorphologyEx(preprocessed, cleaned, MorphTypes.Close, kernel);
-
-            cleaned.SaveImage(caminhoPreprocessado);
-
-            if (needsDisposeResized) resized.Dispose();
-
-            return caminhoPreprocessado;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Erro no pré-processamento da imagem: {caminho}", caminhoImagemOriginal);
-            if (File.Exists(caminhoPreprocessado)) File.Delete(caminhoPreprocessado);
-            return null;
-        }
-    }
-
-    public List<DateTime> ExtrairDatasDoTexto(string texto)
-    {
-        var datasEncontradas = new List<DateTime>();
-
-        if (string.IsNullOrWhiteSpace(texto))
-            return datasEncontradas;
-
-        // Regex melhorado para evitar falsos positivos
-        var padroesDatas = new List<Regex>
-        {
-            new Regex(@"\b(\d{1,2})[./-](\d{1,2})[./-](\d{4})\b"), // dd/MM/yyyy
-            new Regex(@"\b(\d{4})[./-](\d{1,2})[./-](\d{1,2})\b"), // yyyy-MM-dd
-            new Regex(@"\b(\d{1,2})\s+de\s+(\w+)\s+de\s+(\d{4})\b", RegexOptions.IgnoreCase), // 10 de Janeiro de 2023
-            new Regex(@"\b(\d{1,2})[./-](\d{1,2})[./-](\d{2})\b")  // dd/MM/yy
-        };
-
-        var mesesPortugues = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
-        {
-            {"janeiro", 1}, {"jan", 1}, {"fevereiro", 2}, {"fev", 2},
-            {"março", 3}, {"mar", 3}, {"abril", 4}, {"abr", 4},
-            {"maio", 5}, {"mai", 5}, {"junho", 6}, {"jun", 6},
-            {"julho", 7}, {"jul", 7}, {"agosto", 8}, {"ago", 8},
-            {"setembro", 9}, {"set", 9}, {"outubro", 10}, {"out", 10},
-            {"novembro", 11}, {"nov", 11}, {"dezembro", 12}, {"dez", 12}
-        };
-
-        foreach (var regex in padroesDatas)
-        {
-            var matches = regex.Matches(texto);
-
-            foreach (Match match in matches)
-            {
-                try
+                using (var pdfReader = new PdfReader(caminhoPdf))
+                using (var pdfDoc = new PdfDocument(pdfReader))
                 {
-                    DateTime data = DateTime.MinValue;
-                    bool dataValida = false;
+                    int numeroPaginas = pdfDoc.GetNumberOfPages();
 
-                    if (regex == padroesDatas[2]) // Formato Extenso
+                    for (int i = 1; i <= numeroPaginas; i++)
                     {
-                        if (int.TryParse(match.Groups[1].Value, out int dia) &&
-                            mesesPortugues.TryGetValue(match.Groups[2].Value, out int mes) &&
-                            int.TryParse(match.Groups[3].Value, out int ano))
-                        {
-                            if (ano < 100) ano += 2000; // Ajuste ano curto se necessário
-                            try { data = new DateTime(ano, mes, dia); dataValida = true; } catch { }
-                        }
-                    }
-                    else // Formatos numéricos
-                    {
-                        var formatos = new[] { "dd/MM/yyyy", "yyyy-MM-dd", "dd/MM/yy", "d/M/yyyy" };
-                        var valorData = match.Value.Replace('.', '/').Replace('-', '/');
-
-                        if (DateTime.TryParse(valorData, new CultureInfo("pt-BR"), DateTimeStyles.None, out data))
-                        {
-                            dataValida = true;
-                        }
-                    }
-
-                    if (dataValida)
-                    {
-                        // Validação de intervalo lógico (ex: não pegar datas de 1900 ou 2099)
-                        if (data.Year >= 2020 && data.Year <= DateTime.Now.Year + 5)
-                        {
-                            datasEncontradas.Add(data);
-                        }
+                        var pagina = pdfDoc.GetPage(i);
+                        var strategy = new LocationTextExtractionStrategy();
+                        string textoPagina = PdfTextExtractor.GetTextFromPage(pagina, strategy);
+                        textoCompleto.AppendLine(textoPagina);
                     }
                 }
-                catch (Exception ex)
-                {
-                    // Log silencioso para não parar o loop
-                    _logger.LogWarning(ex, "Falha ao parsear data potencial: {valor}", match.Value);
-                }
+
+                string textoFinal = textoCompleto.ToString();
+                _logger.LogInformation("\n\n>>> TEXTO ITEXT7 <<<\n{Texto}\n>>> FIM TEXTO <<<\n", textoFinal);
+
+                return ParsearTexto(textoFinal);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erro ao extrair texto do PDF com iText7.");
+                return (new List<string>(), new List<string>());
             }
         }
 
-        return datasEncontradas.Distinct().OrderBy(d => d).ToList();
-    }
-
-    public string ExtrairTextoDeImagem(string caminhoImagem)
-    {
-        var tessdataPath = Path.Combine(AppContext.BaseDirectory, "tessdata");
-
-        if (!File.Exists(caminhoImagem)) return string.Empty;
-
-        try
+        private (List<string> Datas, List<string> Horas) ParsearTexto(string textoOriginal)
         {
-            using var engine = new TesseractEngine(tessdataPath, "por", EngineMode.Default);
+            var datas = new HashSet<string>();
+            var horas = new HashSet<string>();
 
-            // Configurações otimizadas
-            engine.SetVariable("tessedit_char_whitelist", "0123456789/-. abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZáéíóúàèìòùâêîôûãõçÁÉÍÓÚÀÈÌÒÙÂÊÎÔÛÃÕÇ");
-            engine.SetVariable("tessedit_pageseg_mode", "3"); // 3 = Auto (Detecta blocos, ao invés de 6 que assume bloco único)
+            // Limpeza básica
+            string textoLimpo = textoOriginal.Replace("\"", "").Replace("|", " ").Trim();
 
-            using var img = Pix.LoadFromFile(caminhoImagem);
-            using var page = engine.Process(img);
+            // 1. EXTRAÇÃO DE DATA
+            // Regex estrito: Procura "Data" ou "Dt", separador opcional, e o número.
+            // Ignora "Data Emissão" porque a palavra "Emissão" não cabe no padrão.
+            var regexData = new Regex(@"(?:Data|Dt\.?)\s*[:.]?\s*(\d{2}[./-]\d{2}[./-]\d{4})", RegexOptions.IgnoreCase);
 
-            var texto = page.GetText();
-            var confianca = page.GetMeanConfidence();
+            foreach (Match m in regexData.Matches(textoLimpo))
+            {
+                string dataFmt = NormalizarData(m.Groups[1].Value);
+                if (ValidarData(dataFmt)) datas.Add(dataFmt);
+            }
 
-            _logger.LogDebug("OCR Concluído. Confiança: {conf}. Texto: {len} chars", confianca, texto?.Length ?? 0);
+            // 2. EXTRAÇÃO DE HORA
+            var regexHora = new Regex(@"(?:Hor[aá]rio|Hora)\s*[:.]?\s*(\d{2}[:.]\d{2}(?:[:.]\d{2})?)", RegexOptions.IgnoreCase);
 
-            return texto ?? string.Empty;
+            foreach (Match m in regexHora.Matches(textoLimpo))
+            {
+                string horaBruta = m.Groups[1].Value.Replace(".", ":");
+                if (TimeSpan.TryParse(horaBruta, out var ts))
+                {
+                    horas.Add(ts.ToString(@"hh\:mm"));
+                }
+            }
+
+            // 3. FALLBACK (PLANO B)
+            // Se o regex específico não achou nada, varre por qualquer data válida no futuro.
+            if (datas.Count == 0)
+            {
+                var regexGeral = new Regex(@"(\d{2}[./-]\d{2}[./-]\d{4})");
+                foreach (Match m in regexGeral.Matches(textoLimpo))
+                {
+                    string d = NormalizarData(m.Value);
+                    // O ValidarData agora garante que não pegamos datas passadas
+                    if (ValidarData(d)) datas.Add(d);
+                }
+            }
+
+            if (horas.Count > 1 && horas.Contains("00:00")) horas.Remove("00:00");
+
+            return (datas.ToList(), horas.ToList());
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Erro fatal no Tesseract OCR para imagem: {caminho}", caminhoImagem);
-            return string.Empty;
-        }
-    }
 
-    public static PortalAgendamentoOutputModel CriarResultado(List<DateTime> datas)
-    {
-        return new PortalAgendamentoOutputModel
+        private string NormalizarData(string raw) => raw.Replace(".", "/").Replace("-", "/");
+
+        private bool ValidarData(string input)
         {
-            DataAgendamentoList = datas,
-            // Preenche o campo formatado com a primeira data encontrada, se houver
-            DataAgendamentoFormatted = datas.FirstOrDefault().ToString("dd/MM/yyyy")
-        };
+            var hoje = DateTime.Now.Date;
+            if (DateTime.TryParseExact(input, "dd/MM/yyyy", new CultureInfo("pt-BR"), DateTimeStyles.None, out DateTime dt))
+            {
+                // CORREÇÃO: Bloqueia datas passadas. Aceita apenas Hoje ou Futuro.
+                // Anterior: dt >= hoje.AddDays(-60)
+                // Novo: dt >= hoje
+                if (dt >= hoje && dt <= hoje.AddYears(2)) return true;
+            }
+            return false;
+        }
     }
 }

@@ -21,5 +21,8 @@ public static class Endpoint
 
         // 3. Mapeamento dos Endpoints de Negócio
         ConfirmacaoEndpoint.Map(endpoints);
+        SolicitarAlteracaoEndpoint.Map(endpoints);
+        UploadAnexoEndpoint.Map(endpoints);
+        ConfirmarComAnexoEndpoint.Map(endpoints);
     }
 }

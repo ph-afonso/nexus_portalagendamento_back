@@ -1,4 +1,5 @@
-﻿using Nexus.Framework.Common;
+﻿using Microsoft.AspNetCore.Http;
+using Nexus.Framework.Common;
 using Nexus.Framework.Data.Model.Result;
 using Nexus.PortalAgendamento.Library.Infrastructure.Domain.InputModel;
 using Nexus.PortalAgendamento.Library.Infrastructure.Domain.ListModel;
@@ -7,12 +8,26 @@ namespace Nexus.PortalAgendamento.Library.Infrastructure.Services.Interfaces;
 
 public interface IPortalAgendamentoService
 {
-    // Valida Token
-    Task<NexusResult<ValidadeTokenOutputModel>> ValidarTokenAsync(ValidadeTokenInputModel model, CancellationToken cancellationToken = default);
+    // Métodos Básicos
+    Task<PortalAgendamentoOutputModel?> GetNotasConhecimento(Guid? identificadorCliente, CancellationToken ct);
+    Task<NexusResult<ValidadeTokenOutputModel>> ValidarTokenAsync(ValidadeTokenInputModel model, CancellationToken ct);
 
-    // Busca Notas
-    Task<PortalAgendamentoOutputModel?> GetNotasConhecimento(Guid? identificadorCliente, CancellationToken cancellationToken = default);
+    // Core de Agendamento
+    Task<NexusResult<List<AgendamentoDetalheModel>>> ConfirmarAgendamento(
+        Guid identificadorCliente,
+        DateTime dataAgendamento,
+        List<NotaFiscalOutputModel> notas,
+        CancellationToken ct = default);
 
-    // Processo Principal
-    Task<NexusResult<List<AgendamentoDetalheModel>>> ConfirmarAgendamento(Guid identificadorCliente, DateTime dataAgendamento, List<NotaFiscalOutputModel> notas, CancellationToken cancellationToken = default);
+    // --- MÉTODOS DE ANEXO ---
+
+    /// <summary>
+    /// Recebe o arquivo, salva temporariamente e retorna listas separadas de Datas e Horas encontradas.
+    /// </summary>
+    Task<NexusResult<AnaliseAnexoOutputModel>> UploadAnaliseAnexoAsync(Guid identificadorCliente, IFormFile arquivo, CancellationToken ct);
+
+    /// <summary>
+    /// Realiza o agendamento buscando o arquivo previamente salvo na pasta temporária.
+    /// </summary>
+    Task<NexusResult<ConfirmacaoOutputModel>> AgendarComAnexoTempAsync(ConfirmacaoInputModel input, DateTime dataSolicitada, CancellationToken ct);
 }

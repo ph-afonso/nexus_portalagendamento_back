@@ -12,17 +12,16 @@ public class ConfirmacaoEndpoint : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder app)
         => app.MapPost("portal-agendamento/confirmacao", HandleAsync)
-            .WithName("Confirmação")
-            .WithSummary("Confirmação de Agendamento")
-            .WithDescription("Valida o token e retorna os dados do agendamento confirmado.")
-            .WithTags("PortalAgendamento")
+            .WithName("Aceitar Sugestão de Data")
+            .WithSummary("Aceita sugestão de data e realiza o agendamento utilizando a data sugerida e horário padrão 08:00:00")
+            .WithTags("Aceitar Sugestão")
             .Produces<NexusResult<ConfirmacaoOutputModel>>(StatusCodes.Status200OK)
-            .Produces(StatusCodes.Status400BadRequest)
-            .Produces(StatusCodes.Status500InternalServerError);
+            .Produces(StatusCodes.Status400BadRequest);
 
     private static async Task<IResult> HandleAsync(
         [FromBody] ConfirmacaoInputModel input,
         [FromServices] IPortalAgendamentoService service,
+        [FromServices] ILogger<ConfirmacaoEndpoint> logger, // <--- INJETADO LOGGER
         CancellationToken ct)
     {
         var result = new NexusResult<ConfirmacaoOutputModel>();
@@ -30,14 +29,15 @@ public class ConfirmacaoEndpoint : IEndpoint
 
         try
         {
-            // -----------------------------------------------------------
+            logger.LogInformation("=== [DEBUG] INÍCIO CONFIRMAÇÃO ===");
+
             // 1. VALIDAÇÃO DO TOKEN
-            // -----------------------------------------------------------
             var validacaoInput = new ValidadeTokenInputModel { IdentificadorCliente = input.IdentificadorCliente };
             var validacaoResult = await service.ValidarTokenAsync(validacaoInput, ct);
 
             if (!validacaoResult.IsSuccess || validacaoResult.ResultData == null)
             {
+                logger.LogWarning("[DEBUG] Token inválido ou nulo.");
                 output.Token = new ValidadeTokenOutputModel { TokenValido = false };
                 output.Mensagem = "Token inválido ou não encontrado.";
                 result.ResultData = output;
@@ -47,94 +47,137 @@ public class ConfirmacaoEndpoint : IEndpoint
 
             output.Token = validacaoResult.ResultData;
 
+            // TRAVA 1: Expiração do Link
             if (!output.Token.TokenValido)
             {
+                logger.LogWarning("[DEBUG] Token expirado.");
                 output.Mensagem = "O link de agendamento expirou.";
                 result.ResultData = output;
                 result.AddDefaultSuccessMessage();
                 return Results.Ok(result);
             }
 
+            // TRAVA 2: Validação da DATA
             if (output.Token.DataSugestaoAgendamento.HasValue)
             {
                 output.DataSugestao = output.Token.DataSugestaoAgendamento;
+
+                // Debug da Data
+                logger.LogInformation("... {Dt} vs {Hoje}",
+                output.DataSugestao?.ToString("dd/MM/yyyy"),
+                DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss"));
+
+                if (output.DataSugestao.Value.Date <= DateTime.Now.Date)
+                {
+                    logger.LogWarning("[DEBUG] Tentativa de agendar para data passada.");
+                    output.Mensagem = "A data sugerida para este agendamento já passou. Por favor, solicite uma alteração de data.";
+                    output.NotasFiscais = new List<NotaFiscalOutputModel>();
+                    result.ResultData = output;
+                    result.AddDefaultSuccessMessage();
+                    return Results.Ok(result);
+                }
             }
 
-            // -----------------------------------------------------------
-            // 2. BUSCAR NOTAS FISCAIS
-            // -----------------------------------------------------------
-            PortalAgendamentoOutputModel? notasModel = await service.GetNotasConhecimento(input.IdentificadorCliente, ct);
-
-            // Garante lista instanciada
+            // 2. BUSCAR NOTAS
+            var notasModel = await service.GetNotasConhecimento(input.IdentificadorCliente, ct);
             output.NotasFiscais = notasModel?.NotasFiscais ?? new List<NotaFiscalOutputModel>();
 
-            // -----------------------------------------------------------
-            // 3. PROCESSAR AGENDAMENTO
-            // -----------------------------------------------------------
-            if (output.Token.DataSugestaoAgendamento.HasValue && output.NotasFiscais.Any())
+            logger.LogInformation("[DEBUG] Notas Encontradas: {Qtd}", output.NotasFiscais.Count);
+
+            if (!output.NotasFiscais.Any())
             {
-                var dataParaAgendar = output.Token.DataSugestaoAgendamento.Value;
-
-                // O Service agora retorna a lista de detalhes e JÁ ENVIOU O E-MAIL internamente
-                var resultService = await service.ConfirmarAgendamento(
-                    input.IdentificadorCliente,
-                    dataParaAgendar,
-                    output.NotasFiscais,
-                    ct
-                );
-
-                // Mapeia o resultado do processamento para o output
-                if (resultService.ResultData != null)
-                {
-                    output.ResultadoProcessamento = resultService.ResultData;
-                }
-
-                // Se houve erro crítico (banco fora, etc), retornamos 400
-                if (!resultService.IsSuccess)
-                {
-                    result.AddFailureMessage("Houve uma falha técnica ao processar os agendamentos.");
-                    return Results.BadRequest(result);
-                }
-            }
-            else if (!output.NotasFiscais.Any())
-            {
-                // Caso especial: Token válido mas sem notas (pode ter sido limpo por outro processo)
-                output.Mensagem = "Nenhuma nota fiscal pendente encontrada para este agendamento.";
+                output.Mensagem = "Nenhuma nota encontrada.";
                 result.ResultData = output;
                 return Results.Ok(result);
             }
 
+            // 3. PROCESSAR AGENDAMENTO
+            if (output.DataSugestao.HasValue)
+            {
+                logger.LogInformation("[DEBUG] Chamando Service.ConfirmarAgendamento...");
+
+                var processamento = await service.ConfirmarAgendamento(
+                    input.IdentificadorCliente,
+                    output.DataSugestao.Value,
+                    output.NotasFiscais,
+                    ct
+                );
+
+                if (processamento.ResultData != null)
+                {
+                    output.ResultadoProcessamento = processamento.ResultData;
+
+                    // --- DEBUG DOS STATUS RETORNADOS ---
+                    foreach (var item in output.ResultadoProcessamento)
+                    {
+                        logger.LogInformation("[DEBUG] Item Retorno -> Nota: {Nr} | Status: '{St}' | Agendado Bool: {Ag}",
+                            item.NrNota, item.Status, item.Agendado);
+                    }
+                    // -----------------------------------
+                }
+
+                if (!processamento.IsSuccess)
+                {
+                    logger.LogError("[DEBUG] Falha no Service: {Erro}", processamento.Messages.FirstOrDefault()?.Description);
+                    result.AddFailureMessage("Houve uma falha técnica ao processar.");
+                    return Results.BadRequest(result);
+                }
+            }
+
             // -----------------------------------------------------------
-            // 4. MENSAGEM FINAL INTELIGENTE
+            // 4. MENSAGEM FINAL (LÓGICA CORRIGIDA E DEBUGADA)
             // -----------------------------------------------------------
-            int qtdSucesso = output.ResultadoProcessamento.Count(x => x.Agendado);
             int qtdTotal = output.NotasFiscais.Count;
 
-            string textoData = output.DataSugestao.HasValue
-                ? output.DataSugestao.Value.ToString("dd/MM/yyyy")
-                : "DATA_INDEFINIDA";
+            // Contamos quem foi agendado AGORA (Insert Realizado = true)
+            int qtdNovos = output.ResultadoProcessamento.Count(x => x.Agendado);
 
-            if (qtdSucesso == qtdTotal && qtdTotal > 0)
+            // CORREÇÃO AQUI: O Service retorna "Já Agendado", não "Agendado".
+            // Se você procurar por "Agendado", vai dar 0 sempre.
+            int qtdJaAgendado = output.ResultadoProcessamento
+                .Count(x => string.Equals(x.Status, "Já Agendado", StringComparison.OrdinalIgnoreCase));
+
+            // Debug da Contagem
+            logger.LogInformation("[DEBUG] CONTAGEM FINAL: Total={T} | Novos={N} | JáAgendados={J}",
+                qtdTotal, qtdNovos, qtdJaAgendado);
+
+            int totalSucesso = qtdNovos + qtdJaAgendado;
+            string dt = output.DataSugestao?.ToString("dd/MM/yyyy") ?? "";
+
+            if (totalSucesso == qtdTotal && qtdTotal > 0)
             {
-                output.Mensagem = $"Sucesso! Todas as {qtdTotal} notas foram agendadas para {textoData}.";
+                if (qtdNovos > 0)
+                {
+                    // Cenário: Pelo menos um item precisou de INSERT/UPDATE no banco
+                    output.Mensagem = $"Sucesso! Agendamento confirmado para {dt}.";
+                    logger.LogInformation("[DEBUG] Cenário: SUCESSO NOVO");
+                }
+                else
+                {
+                    // Cenário: Todos retornaram "Já Agendado"
+                    output.Mensagem = $"Agendamento já consta confirmado para {dt}.";
+                    logger.LogInformation("[DEBUG] Cenário: JÁ CONSTA CONFIRMADO");
+                }
             }
-            else if (qtdSucesso > 0)
+            else if (totalSucesso > 0)
             {
-                output.Mensagem = $"Agendamento Parcial: {qtdSucesso} de {qtdTotal} notas foram agendadas. Verifique os alertas abaixo.";
+                output.Mensagem = $"Agendamento parcial ({totalSucesso}/{qtdTotal}) realizado. Verifique os itens.";
+                logger.LogWarning("[DEBUG] Cenário: PARCIAL");
             }
             else
             {
-                output.Mensagem = "Não foi possível agendar as notas. Verifique os motivos na lista abaixo.";
+                output.Mensagem = "Não foi possível confirmar o agendamento. Verifique os motivos na lista abaixo.";
+                logger.LogError("[DEBUG] Cenário: FALHA TOTAL");
             }
 
-            // Monta o retorno final
             result.ResultData = output;
             result.AddDefaultSuccessMessage();
             return Results.Ok(result);
         }
         catch (Exception ex)
         {
-            result.AddFailureMessage($"Erro ao processar confirmação: {ex.Message}");
+            logger.LogError(ex, "[DEBUG] EXCEPTION NO ENDPOINT");
+            result.AddFailureMessage($"Erro: {ex.Message}");
             return Results.BadRequest(result);
         }
     }

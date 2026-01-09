@@ -21,4 +21,6 @@ public interface IPortalAgendamentoRepository
     // Emails
     Task<List<ClientesRegrasAgendamentoEmail>> GetDestinatariosEmailAsync(int? codFornecedor, int? codRecebedor, CancellationToken cancellationToken = default);
     Task EnviarEmailPostfixAsync(EmailPostFixInputModel input, CancellationToken cancellationToken = default);
+
+    Task<NexusResult<bool>> VincularAnexoOcorrenciaAsync(int codOcorrencia, string nomeArquivoOriginal, byte[] arquivoBytes, CancellationToken ct);
 }

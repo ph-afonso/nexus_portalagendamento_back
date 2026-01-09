@@ -22,7 +22,7 @@ public class PortalAgendamentoRepository : ProcedureRepository, IPortalAgendamen
 
     public PortalAgendamentoRepository(
         IConnectionStringProvider connectionStringProvider,
-        ILogger<PortalAgendamentoRepository> logger, // <--- CORREÇÃO AQUI: Tipo correto
+        ILogger<PortalAgendamentoRepository> logger,
         IServiceBase serviceBase)
         : base(connectionStringProvider, logger)
     {
@@ -184,7 +184,8 @@ public class PortalAgendamentoRepository : ProcedureRepository, IPortalAgendamen
                 ONF.DT_SOLUCAO_OCORRENCIAS_NOTAS_FISCAIS IS NULL 
                 AND NF.DT_ENTREGA_NOTAS_FISCAIS IS NULL
                 AND NF.NR_NOTAS_FISCAIS = @NrNota
-                AND NF.COD_FILIAIS = @CodFilial";
+                AND NF.COD_FILIAIS = @CodFilial
+            ORDER BY OCO.COD_OCORRENCIAS DESC";
 
             return await connection.QueryFirstOrDefaultAsync<OcorrenciaAbertaModel>(sql, new { NrNota = nrNota, CodFilial = codFilial });
         }
@@ -203,8 +204,10 @@ public class PortalAgendamentoRepository : ProcedureRepository, IPortalAgendamen
             await using var connection = new SqlConnection(cs);
             await connection.OpenAsync(cancellationToken);
 
+            // A procedure espera TODOS esses parâmetros. Mesmo passando NULL, eles devem existir no objeto anônimo do Dapper.
             const string sql = @"
                 DECLARE @DATETIME DATETIME = GETDATE();
+                
                 EXEC NewSitex.dbo.PR_ENCERRA_OCORRENCIAS_MASSA  
                     @COD_CONHECIMENTOS = @CodConhecimentos,       
                     @COD_USUARIOS = 2,     
@@ -212,13 +215,28 @@ public class PortalAgendamentoRepository : ProcedureRepository, IPortalAgendamen
                     @SESSION_ID = 'RPA',   
                     @COD_FILIAIS = @CodFilial,       
                     @COD_OCORRENCIAS_TIPO = @CodOcorrenciaTipo,
+                    
+                    -- Parâmetros Opcionais (DEVEM ser passados, mesmo que NULL)
+                    @T_DT_AGENDAMENTO = @DataAgendamento,
+                    @T_HR_AGENDAMENTO_INICIAL = @HoraInicial,       
+                    @T_HR_AGENDAMENTO_FINAL = @HoraFinal,  
+                    @T_COD_AGENDAMENTOS_PERIODO = @Periodo,                                                                        
+                    @T_COD_AGENDAMENTOS_TIPO = @TipoAgendamento,
+                    
                     @T_OBSERVACAO = 'Encerramento automático via Portal Agendamento DPA';";
 
             await connection.ExecuteAsync(sql, new
             {
                 CodConhecimentos = ocorrencia.CodConhecimentos,
                 CodFilial = ocorrencia.CodFilial,
-                CodOcorrenciaTipo = ocorrencia.CodOcorrenciaTipo
+                CodOcorrenciaTipo = ocorrencia.CodOcorrenciaTipo,
+
+                // Passando NULL explicitamente para satisfazer a assinatura da procedure
+                DataAgendamento = (DateTime?)null,
+                HoraInicial = (string?)null,
+                HoraFinal = (string?)null,
+                Periodo = (int?)null,
+                TipoAgendamento = (int?)null
             });
         }
         catch (Exception ex)
@@ -242,7 +260,14 @@ public class PortalAgendamentoRepository : ProcedureRepository, IPortalAgendamen
             string horaStr = input.DataAgendamento.ToString("HH:mm");
             if (horaStr == "00:00") horaStr = "08:00";
 
-            foreach (var nota in input.Notas)
+            // CORREÇÃO: Agrupar por Impresso e Filial para evitar chamadas duplicadas para o mesmo CTe
+            var conhecimentosDistintos = input.Notas
+                .Where(n => n.NrImpressoConhecimentos.HasValue)
+                .GroupBy(n => new { n.CodFiliais, n.NrImpressoConhecimentos })
+                .Select(g => g.First()) // Pega um representante do grupo
+                .ToList();
+
+            foreach (var nota in conhecimentosDistintos)
             {
                 var sqlFilial = "SELECT TOP 1 IDENT_FILIAIS FROM NewSitex.dbo.TB_FILIAIS WITH(NOLOCK) WHERE COD_FILIAIS = @CodFilial";
                 var identFilial = await connection.QueryFirstOrDefaultAsync<int?>(sqlFilial, new { CodFilial = nota.CodFiliais });
@@ -255,6 +280,7 @@ public class PortalAgendamentoRepository : ProcedureRepository, IPortalAgendamen
 
                 const string sqlProc = @"
                 DECLARE @DATETIME DATETIME = GETDATE();
+                
                 EXEC NewSitex.dbo.PR_I_TB_OCORRENCIAS_MASSA 
                     @IDENT_FILIAIS = @IdentFilial,
                     @NR_IMPRESSO_CONHECIMENTOS = @NrImpressoConhecimento,
@@ -268,10 +294,18 @@ public class PortalAgendamentoRepository : ProcedureRepository, IPortalAgendamen
                     @DATA_AGENDAMENTO = @DataAgendamento,
                     @PERIODO_AGENDAMENTO = 4,
                     @HORARIO_INICIO_AGENDAMENTO = @Hora,
+                    
+                    @HORARIO_FIM_AGENDAMENTO = NULL,
                     @OBSERVACAO_AGENDAMENTO = @Observacao,
                     @COD_INCLUSAO_USUARIOS = 2,
                     @COD_FILIAIS_USUARIOS = @CodFilial,
+                    
+                    @ID_OCORRENCIA_MASSA = NULL,
                     @CODIGO_OCORRENCIA_EJ = 91,
+                    
+                    @ID_OCORRENCIA_ATLAS = NULL,
+                    @ID_TIPO_COMPLEMENTO_OCORRENCIA = NULL,
+                    @AUTORIZACAO_COMPLEMENTO = NULL,
                     @VL_COMPLEMENTO = 0.00;";
 
                 await connection.ExecuteAsync(sqlProc, new
@@ -351,6 +385,89 @@ public class PortalAgendamentoRepository : ProcedureRepository, IPortalAgendamen
         catch (Exception ex)
         {
             _log.LogError(ex, "EnviarEmailPostfixAsync -> Erro");
+        }
+    }
+
+    public async Task<NexusResult<bool>> VincularAnexoOcorrenciaAsync(int codOcorrencia, string nomeArquivoOriginal, byte[] arquivoBytes, CancellationToken ct)
+    {
+        var nexus = new NexusResult<bool>();
+
+        // Constantes
+        const string DS_TRATATIVA_VOUCHER = "VOUCHER PORTAL CSDPA";
+        const short COD_TIPO_ANEXOS_VOUCHER = 12;
+        const bool FL_VOUCHER = true;
+        const int COD_INCLUSAO_USUARIOS_VOUCHER = 2;
+
+        var cs = await _conn.GetDefaultConnectionStringAsync();
+        await using var conn = new SqlConnection(cs);
+        await conn.OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+
+        try
+        {
+            // 1. SALVAR ARQUIVO NO DISCO
+            var basePath = Environment.GetEnvironmentVariable("TRATATIVAS_BASE_PATH")
+                            ?? @"\\arquivos.tragetta.com.br\DESENVOLVIMENTO$\Repository\TratativasOcorrencias";
+
+            if (!Directory.Exists(basePath) && !basePath.StartsWith(@"\\"))
+                Directory.CreateDirectory(basePath);
+
+            var bucket = Guid.NewGuid().ToString("N");
+            var dir = Path.Combine(basePath, bucket);
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+
+            var safeName = Path.GetFileName(nomeArquivoOriginal);
+            var diskPath = Path.Combine(dir, safeName);
+
+            await File.WriteAllBytesAsync(diskPath, arquivoBytes, ct);
+
+            // 2. INSERTS COM RECUPERAÇÃO DA DATA REAL (OUTPUT)
+            // Criamos uma tabela temporária em memória (@TabelaData) para pegar a data exata que o SQL gerou.
+            const string sqlScript = @"
+            DECLARE @TabelaData TABLE (DataGravada DATETIME);
+            DECLARE @DataFinal DATETIME;
+
+            -- 1. Insert no Pai + OUTPUT para pegar a data que foi REALMENTE gravada
+            INSERT INTO NewSitex.dbo.TB_OCORRENCIAS_TRATATIVAS
+                (COD_OCORRENCIAS, DT_INCLUSAO_OCORRENCIAS_TRATATIVAS, DT_OCORRENCIAS_TRATATIVAS, 
+                 DS_OCORRENCIAS_TRATATIVAS, COD_INCLUSAO_USUARIOS, FL_VOUCHER, COD_TIPO_ANEXOS)
+            OUTPUT INSERTED.DT_INCLUSAO_OCORRENCIAS_TRATATIVAS INTO @TabelaData
+            VALUES
+                (@COD_OCORRENCIAS, GETDATE(), GETDATE(), 
+                 @DS, @USU, @FLV, @COD_TIPO);
+
+            -- 2. Recupera a data exata da tabela temporária
+            SELECT TOP 1 @DataFinal = DataGravada FROM @TabelaData;
+
+            -- 3. Insert no Filho usando a @DataFinal (Garante match de 100% com a FK)
+            INSERT INTO NewSitex.dbo.TB_OCORRENCIAS_TRATATIVAS_ARQUIVOS
+                (COD_OCORRENCIAS, DT_INCLUSAO_OCORRENCIAS_TRATATIVAS, CAMINHO_OCORRENCIAS_TRATATIVAS_ARQUIVOS)
+            VALUES
+                (@COD_OCORRENCIAS, @DataFinal, @CAMINHO);
+        ";
+
+            await conn.ExecuteAsync(sqlScript, new
+            {
+                COD_OCORRENCIAS = codOcorrencia,
+                DS = DS_TRATATIVA_VOUCHER,
+                USU = COD_INCLUSAO_USUARIOS_VOUCHER,
+                FLV = FL_VOUCHER,
+                COD_TIPO = COD_TIPO_ANEXOS_VOUCHER,
+                CAMINHO = diskPath
+            }, transaction: (SqlTransaction)tx);
+
+            await tx.CommitAsync(ct);
+
+            nexus.AddData(true);
+            nexus.AddDefaultSuccessMessage();
+            return nexus;
+        }
+        catch (Exception ex)
+        {
+            await tx.RollbackAsync(ct);
+            _logger.LogError(ex, "VincularAnexoOcorrenciaAsync -> Erro ID {Id}", codOcorrencia);
+            nexus.AddFailureMessage($"Erro no Banco de Dados: {ex.Message}");
+            return nexus;
         }
     }
 }
