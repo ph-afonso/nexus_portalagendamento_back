@@ -1,6 +1,4 @@
-﻿Aqui está o código Markdown completo para o seu `README.md`. É só copiar e colar no arquivo.
 
-```markdown
 # 📅 Nexus.PortalAgendamento
 
 ![Build Status](https://img.shields.io/badge/Build-Passing-success?style=for-the-badge&logo=appveyor)
