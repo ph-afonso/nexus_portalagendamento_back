@@ -2,7 +2,6 @@ namespace Nexus.PortalAgendamento.Library.Infrastructure.Domain.InputModel;
 
 public class OcorrenciaAbertaModel
 {
-    // Identificador único (Primary Key da tabela de Ocorrências) - ADICIONADO
     public int IdOcorrencia { get; set; }
 
     public int CodOcorrenciaTipo { get; set; }
@@ -12,7 +11,6 @@ public class OcorrenciaAbertaModel
     public DateTime? DataAgendamento { get; set; }
     public string HoraAgendamento { get; set; } = string.Empty;
 
-    // Dados para Encerramento
     public int CodFilial { get; set; }
     public int CodConhecimentos { get; set; }
 }

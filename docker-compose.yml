@@ -1,0 +1,32 @@
+services:
+  api-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        FEED_PAT: ${FEED_PAT}
+    container_name: nexus-api-dev
+    restart: always
+    ports:
+      - "${PORT_DEV}:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - TRATATIVAS_BASE_PATH=/app/uploads_dev
+    volumes:
+      - ./docker_data/dev_uploads:/app/uploads_dev
+
+  api-prod:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        FEED_PAT: ${FEED_PAT}
+    container_name: nexus-api-prod
+    restart: always
+    ports:
+      - "${PORT_PROD}:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - TRATATIVAS_BASE_PATH=/app/uploads_prod
+    volumes:
+      - ./docker_data/prod_uploads:/app/uploads_prod

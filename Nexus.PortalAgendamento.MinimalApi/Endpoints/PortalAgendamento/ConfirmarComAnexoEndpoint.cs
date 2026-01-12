@@ -13,8 +13,9 @@ public class ConfirmarComAnexoEndpoint : IEndpoint
     public static void Map(IEndpointRouteBuilder app)
         => app.MapPost("portal-agendamento/confirmar-com-anexo", HandleAsync)
             .WithName("ConfirmarComAnexo")
-            .WithSummary("Confirma o agendamento utilizando o anexo enviado previamente para vinculo em tratativas.")
-            .WithTags("Confirmação via Anexo")
+            .WithSummary("Confirma o agendamento utilizando um anexo.")
+            .WithDescription("Valida o token, verifica a data solicitada e processa o agendamento vinculando o arquivo PDF previamente enviado (Upload) às ocorrências geradas.")
+            .WithTags("Agendamento")
             .Produces<NexusResult<ConfirmacaoOutputModel>>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest);
 
@@ -29,19 +30,19 @@ public class ConfirmarComAnexoEndpoint : IEndpoint
 
         try
         {
-            logger.LogInformation(">>> INÍCIO CONFIRMAÇÃO COM ANEXO. Guid: {Guid}. Data Solicitada: {Dt}",
+            logger.LogInformation("[ConfirmacaoAnexo] Iniciando fluxo. Cliente: {ClienteId} | Data Solicitada: {Data}",
                 input.IdentificadorCliente, input.DataSolicitada);
 
-            // ---------------------------------------------------------
-            // 1. VALIDAÇÃO DE SEGURANÇA (Igual ao ConfirmacaoEndpoint)
-            // ---------------------------------------------------------
-            var validacaoInput = new ValidadeTokenInputModel { IdentificadorCliente = input.IdentificadorCliente };
-            var validacaoResult = await service.ValidarTokenAsync(validacaoInput, ct);
+            var validacaoResult = await service.ValidarTokenAsync(
+                new ValidadeTokenInputModel { IdentificadorCliente = input.IdentificadorCliente }, ct);
 
-            if (!validacaoResult.IsSuccess || validacaoResult.ResultData == null)
+            if (!validacaoResult.IsSuccess || validacaoResult.ResultData is null || !validacaoResult.ResultData.TokenValido)
             {
+                logger.LogWarning("[ConfirmacaoAnexo] Token inválido ou expirado. Cliente: {ClienteId}", input.IdentificadorCliente);
+
                 output.Token = new ValidadeTokenOutputModel { TokenValido = false };
-                output.Mensagem = "Token inválido ou não encontrado.";
+                output.Mensagem = "O link de agendamento expirou ou é inválido.";
+
                 result.ResultData = output;
                 result.AddDefaultSuccessMessage();
                 return Results.Ok(result);
@@ -49,36 +50,17 @@ public class ConfirmarComAnexoEndpoint : IEndpoint
 
             output.Token = validacaoResult.ResultData;
 
-            // Trava: Expiração do Link
-            if (!output.Token.TokenValido)
+            if (input.DataSolicitada.Date < DateTime.Now.Date)
             {
-                output.Mensagem = "O link de agendamento expirou.";
+                logger.LogWarning("[ConfirmacaoAnexo] Tentativa de agendamento retroativo: {Data}", input.DataSolicitada);
+
+                output.Mensagem = "A data solicitada não pode ser no passado.";
                 result.ResultData = output;
                 result.AddDefaultSuccessMessage();
                 return Results.Ok(result);
             }
 
-            // Trava: Data Passada
-            if (input.DataSolicitada.Date < DateTime.Now.Date)
-            {
-                output.Mensagem = "A data solicitada não pode ser no passado.";
-                result.ResultData = output;
-                result.AddDefaultSuccessMessage(); // Retorna 200 com mensagem de erro amigável
-                return Results.Ok(result);
-            }
-
-            // ---------------------------------------------------------
-            // 2. PROCESSAMENTO (Recupera Anexo + Agenda + Vincula)
-            // ---------------------------------------------------------
-
-            // Convertemos para o InputModel genérico que o método de confirmação usa internamente se necessário,
-            // ou passamos os dados diretamente para o método novo.
-            var inputConfirmacao = new ConfirmacaoInputModel
-            {
-                IdentificadorCliente = input.IdentificadorCliente
-            };
-
-            logger.LogInformation("[DEBUG] Chamando AgendarComAnexoTempAsync...");
+            var inputConfirmacao = new ConfirmacaoInputModel { IdentificadorCliente = input.IdentificadorCliente };
 
             var responseService = await service.AgendarComAnexoTempAsync(
                 inputConfirmacao,
@@ -88,20 +70,17 @@ public class ConfirmarComAnexoEndpoint : IEndpoint
 
             if (!responseService.IsSuccess)
             {
-                // Se falhou (ex: Arquivo expirou, erro técnico), retornamos 400
+                logger.LogError("[ConfirmacaoAnexo] Falha no processamento: {Erro}", responseService.Messages.FirstOrDefault()?.Description);
                 return Results.BadRequest(responseService);
             }
 
-            // ---------------------------------------------------------
-            // 3. RETORNO
-            // ---------------------------------------------------------
-            // O Service já monta o OutputModel completo com mensagens e status
+            logger.LogInformation("[ConfirmacaoAnexo] Processo concluído com sucesso para Cliente {ClienteId}.", input.IdentificadorCliente);
             return Results.Ok(responseService);
 
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Erro crítico no ConfirmarComAnexoEndpoint");
+            logger.LogError(ex, "[ConfirmacaoAnexo] Erro crítico não tratado. Cliente: {ClienteId}", input.IdentificadorCliente);
             result.AddFailureMessage($"Erro interno: {ex.Message}");
             return Results.BadRequest(result);
         }

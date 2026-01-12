@@ -1,39 +1,58 @@
-# Etapa base de runtime
+# --------------------------------------------------------
+# 1. Etapa Base (Runtime)
+# --------------------------------------------------------
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS base
 WORKDIR /app
 EXPOSE 8080
 ENV ASPNETCORE_URLS=http://+:8080 \
     ASPNETCORE_ENVIRONMENT=Production
 
-# Etapa de build
+# [OPCIONAL] Instalação de libs gráficas para PDF/OCR no Linux
+# Descomente as linhas abaixo se tiver erro de "System.Drawing" ou "libgdiplus"
+# RUN apt-get update && apt-get install -y libgdiplus libc6-dev && apt-get clean
+
+# --------------------------------------------------------
+# 2. Etapa de Build (SDK)
+# --------------------------------------------------------
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
-# Copia MinimalApi E Library (dependência)
-COPY Nexus.PortalAgendamento.MinimalApi/ ./Nexus.PortalAgendamento.MinimalApi/
-COPY Nexus.PortalAgendamento.Library/ ./Nexus.PortalAgendamento.Library/
-COPY nuget.config ./
+# Recebe o token via argumento de build (Segurança)
+ARG FEED_PAT
 
-RUN echo "PAT recebido: ${FEED_PAT}"
+# 2.1 Copia APENAS arquivos de configuração primeiro (para Cache)
+COPY ["nuget.config", "."]
+COPY ["Nexus.PortalAgendamento.MinimalApi/Nexus.PortalAgendamento.MinimalApi.csproj", "Nexus.PortalAgendamento.MinimalApi/"]
+COPY ["Nexus.PortalAgendamento.Library/Nexus.PortalAgendamento.Library.csproj", "Nexus.PortalAgendamento.Library/"]
 
-# Configura o feed privado (SEM ponto-e-vírgula no final!)
+# 2.2 Configura Nuget Autenticado
+# O token vem da variável ARG, não fica salvo no arquivo
 RUN dotnet nuget update source Feed-Tragetta \
-    --username "natan.veloso.ext@tragetta.com.br" \
-    --password "1EzQ89tu17sqtAMgVC5aHYjZsHpuTA8wUVrr1KgVmvGfacDvvEvBJQQJ99BKACAAAAATkJiBAAASAZDO4ahz" \
+    --username "nathan.silva.ext@tragetta.com.br" \
+    --password "${FEED_PAT}" \
     --store-password-in-clear-text \
     --configfile nuget.config
 
-# Restore e Build
-WORKDIR /src/Nexus.PortalAgendamento.MinimalApi
-RUN dotnet restore
-RUN dotnet build -c Release -o /app/build
+# 2.3 Restaura dependências (Isso fica em cache se o csproj não mudar)
+RUN dotnet restore "Nexus.PortalAgendamento.MinimalApi/Nexus.PortalAgendamento.MinimalApi.csproj"
 
-# Publicação
-FROM build AS publish
+# 2.4 Copia o resto do código fonte
+COPY . .
+
+# 2.5 Build e Publish
+WORKDIR "/src/Nexus.PortalAgendamento.MinimalApi"
+RUN dotnet build -c Release -o /app/build
 RUN dotnet publish -c Release -o /app/publish /p:UseAppHost=false
 
-# Final
+# --------------------------------------------------------
+# 3. Etapa Final
+# --------------------------------------------------------
 FROM base AS final
 WORKDIR /app
-COPY --from=publish /app/publish .
+COPY --from=build /app/publish .
+
+# Garante que a pasta tessdata e outros arquivos estáticos venham junto
+# (Se não estiverem configurados como "CopyAlways" no .csproj)
+# COPY --from=build /src/Nexus.PortalAgendamento.Library/tessdata ./tessdata
+
 ENTRYPOINT ["dotnet", "Nexus.PortalAgendamento.MinimalApi.dll"]

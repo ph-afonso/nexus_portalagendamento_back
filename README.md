@@ -1,108 +1,98 @@
-﻿# 📅 Nexus.PortalAgendamento
+﻿Aqui está o código Markdown completo para o seu `README.md`. É só copiar e colar no arquivo.
+
+```markdown
+# 📅 Nexus.PortalAgendamento
 
 ![Build Status](https://img.shields.io/badge/Build-Passing-success?style=for-the-badge&logo=appveyor)
-![.NET](https://img.shields.io/badge/.NET-8.0%2F9.0-512BD4?style=for-the-badge&logo=dotnet)
+![.NET](https://img.shields.io/badge/.NET-9.0-512BD4?style=for-the-badge&logo=dotnet)
+![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker)
 ![Status](https://img.shields.io/badge/Status-Development-orange?style=for-the-badge)
 
-Backend robusto e modular responsável pelas regras de negócio e integrações do Portal de Agendamento. Construído sobre o **Nexus Framework** com arquitetura de Minimal APIs.
+Backend robusto e modular responsável pelas regras de negócio, processamento de arquivos e integrações do Portal de Agendamento. Construído sobre o **Nexus Framework** utilizando arquitetura de **Minimal APIs** de alta performance.
 
 ---
 
-## 🏗️ Arquitetura e Framework
+## 🏗️ Arquitetura e Tecnologias
 
-O projeto segue uma arquitetura em camadas (N-Tier) modernizada, utilizando o conceito de **Vertical Slices** (Fatias Verticais) na camada de apresentação.
+O projeto segue uma arquitetura moderna, focada em performance e baixa latência:
+
+* **Runtime:** .NET 9.0
+* **API:** ASP.NET Core Minimal APIs (baixo overhead).
+* **Documentação:** Scalar (OpenAPI/Swagger moderno).
+* **Logs:** Serilog + Seq (Rastreabilidade distribuída).
+* **OCR/PDF:** iText7 + Tesseract (Extração inteligente de dados em boletos/comprovantes).
 
 ### Estrutura da Solução
-* **`Nexus.PortalAgendamento.MinimalApi`**: Camada de entrada (Presentation). Contém a configuração da aplicação, injeção de dependência e os *Endpoints*.
-* **`Nexus.PortalAgendamento.Library`**: O coração do sistema. Contém os *Services* (Regra de Negócio), *Repositories* (Acesso a Dados) e *Models*.
+* **`Nexus.PortalAgendamento.MinimalApi`**: Camada de Apresentação. Contém a configuração do host, injeção de dependência e os *Endpoints* organizados por funcionalidade.
+* **`Nexus.PortalAgendamento.Library`**: O coração do sistema (Core). Contém os *Services*, *Repositories*, *Models* e a lógica de integração com o legado.
 
 ### O Nexus Framework
-O sistema utiliza um framework proprietário (`Nexus.Framework.*`) que padroniza o desenvolvimento:
+O sistema utiliza o ecossistema `Nexus.Framework.*` para padronização:
 
-* **⚡ Data Access (Procedure Repository):**
-    Otimizado para **Stored Procedures**, garantindo alta performance no acesso ao SQL Server.
-    * Prefixos padrão: `SNG_` (Single/GetById), `LST_` (List/Search), `APP_` (Application/Save).
-    * Exemplo: `_serviceBase.FindByNumericIdAsync` ou `_serviceBase.ExecutePaginatedQueryAsync`.
-
-* **🛡️ NexusResult Pattern:**
-    Todas as respostas da API são encapsuladas no objeto `NexusResult<T>`, garantindo um contrato único para o Frontend:
-    * `IsSuccess`: Status da operação.
-    * `ResultData`: O dado retornado.
-    * `Messages`: Lista de validações ou erros.
-
-* **📝 Observabilidade:**
-    Integração nativa com **Serilog** e **Seq**. Os logs são automaticamente enriquecidos com `MachineName`, `ThreadId`, `CorrelationId` e `Environment`.
+* **⚡ Data Access:** Otimizado para **Stored Procedures** do SQL Server (Prefixos: `SNG_`, `LST_`, `APP_`).
+* **🛡️ NexusResult Pattern:** Padronização de respostas (`IsSuccess`, `ResultData`, `Messages`) garantindo previsibilidade para o Frontend.
+* **🔒 Vault:** Gerenciamento seguro de credenciais (opcional).
 
 ---
 
 ## 🚀 Como Rodar o Projeto
 
-### Pré-requisitos
-* [.NET SDK 8.0 ou 9.0](https://dotnet.microsoft.com/download)
-* SQL Server (com as procedures instaladas)
-* Seq (Opcional, para visualização de logs)
+Você pode rodar a aplicação localmente via .NET CLI ou utilizando Docker.
 
-### Configuração (appsettings.json)
-Certifique-se de configurar a string de conexão no arquivo `appsettings.Development.json` dentro da pasta da API:
+### Opção 1: Rodando Localmente (.NET CLI)
 
-```json
-{
-  "ConnectionStrings": {
-    "DefaultConnection": "Server=SEU_SERVER;Database=SEU_BANCO;User Id=user;Password=pass;"
-  },
-  "Logging": {
-    "Seq": { "ServerUrl": "http://localhost:5341", "ApiKey": "" }
-  }
-}
-
-```
-
-### Executando a API
-
-No terminal, navegue até a raiz da solução e execute:
+1.  **Pré-requisitos:** .NET SDK 9.0 instalado.
+2.  **Configuração:** Verifique o arquivo `appsettings.Development.json`.
+3.  **Execução:**
 
 ```bash
-# Restaurar dependências
+# Restaurar dependências e ferramentas
 dotnet restore
 
-# Compilar
-dotnet build
-
-# Rodar a Minimal API
-dotnet run --project Nexus.PortalAgendamento.MinimalApi
+# Rodar a API (Ambiente Development)
+dotnet run --project Nexus.PortalAgendamento.MinimalApi --launch-profile "Nexus (Development)"
 
 ```
 
-A API iniciará (geralmente em `http://localhost:5272` ou `https://localhost:7144`).
+### Opção 2: Rodando com Docker Compose 🐳
+
+Ideal para simular ambientes de Homologação/Produção sem instalar dependências na máquina.
+
+1. **Configuração:** Crie um arquivo `.env` na raiz com seu token do Azure DevOps (`FEED_PAT`).
+2. **Execução:**
+
+```bash
+# Sobe o ambiente completo (Dev e Prod)
+docker-compose up --build -d
+
+# Acessar API Dev: http://localhost:5000
+# Acessar API Prod: http://localhost:8080
+
+```
 
 ---
 
-## 📚 Documentação (OpenAPI/Scalar)
+## 📚 Documentação (Scalar)
 
-O projeto utiliza **Scalar** (interface moderna para OpenAPI) para documentação interativa.
+O projeto utiliza **Scalar** para documentação interativa da API. Diferente do Swagger tradicional, oferece uma interface mais limpa e exemplos de código em várias linguagens.
 
-> **Acesso:** Com a API rodando em modo *Development*, acesse:
+> **Acesso Local (Development/Simulation):**
 > 👉 **[https://localhost:7144/scalar/v1](https://www.google.com/search?q=https://localhost:7144/scalar/v1)**
 
-Lá você pode visualizar os esquemas, testar requisições e ver exemplos de retorno.
-
 ---
 
-## 🔌 Rotas Principais
+## 🔌 Principais Endpoints
 
-A API organiza as rotas utilizando o prefixo global `/apis.portalagendamento/v1`.
+A API organiza as rotas sob o prefixo global `/apis.portalagendamento/v1`. Abaixo estão as rotas principais implementadas:
 
 | Grupo | Verbo | Rota (Resumida) | Descrição |
 | --- | --- | --- | --- |
-| **Health** | `GET` | `/` | Verifica se a API está online. |
-| **Voucher** | `POST` | `/portal-agendamento/voucher/{idCliente}` | Gera tratativa de ocorrência e anexa arquivo. |
-| **Cliente** | `GET` | `/portal-agendamento/cliente/{idCliente}` | Consulta dados cadastrais do cliente. |
-| **Agendamento** | `GET` | `/portal-agendamento/data-agendamento-confirmacao/...` | Retorna dados de confirmação. |
-| **Agendamento** | `PUT` | `/portal-agendamento/salvar/...` | Atualiza a data de agendamento. |
-| **PDF** | `POST` | `/portal-agendamento/data-agendamento-pdf` | Extrai dados de agendamento via upload de PDF. |
-| **Notas** | `GET` | `/portal-agendamento/notas/{idCliente}` | Lista notas fiscais vinculadas. |
-| **Token** | `GET` | `/portal-agendamento/validade/{idCliente}` | Verifica validade do token de acesso. |
-| **Email** | `POST` | `/portal-agendamento/email/{idCliente}` | Envia e-mail com anexo. |
+| **Health** | `GET` | `/health` | Status da API e Ambiente (Dev/Prod). |
+| **Agendamento** | `POST` | `/portal-agendamento/confirmacao` | Aceita a data sugerida e confirma o agendamento. |
+| **Agendamento** | `POST` | `/portal-agendamento/confirmar-com-anexo` | Confirma o agendamento vinculando um PDF previamente enviado. |
+| **Alteração** | `GET` | `/portal-agendamento/solicitar-alteracao/{id}` | Busca dados e notas disponíveis para troca de data. |
+| **Alteração** | `POST` | `/portal-agendamento/solicitar-alteracao` | Processa a solicitação de uma nova data manual. |
+| **Upload** | `POST` | `/portal-agendamento/upload-analise` | Recebe PDF, aplica OCR e retorna datas encontradas. |
 
 ---
 
@@ -110,19 +100,22 @@ A API organiza as rotas utilizando o prefixo global `/apis.portalagendamento/v1`
 
 ```bash
 Nexus.PortalAgendamento
-├── 📂 Nexus.PortalAgendamento.MinimalApi  # Projeto Web API (Entry Point)
-│   ├── 📂 Common                          # Interfaces (IEndpoint)
-│   ├── 📂 Endpoints                       # Definição das Rotas (Vertical Slices)
-│   │   └── 📂 PortalAgendamento           # Endpoints de Domínio
-│   └── 📄 Program.cs                      # Configuração, Middleware e DI
+├── 📂 Nexus.PortalAgendamento.MinimalApi  # Entry Point
+│   ├── 📂 Endpoints                       # Definição das Rotas
+│   │   └── 📂 PortalAgendamento           # Lógica dos Endpoints (Handlers)
+│   ├── 📄 Program.cs                      # Configuração, Middleware e DI
+│   └── 📄 appsettings.json                # Configurações de Ambiente
 │
-└── 📂 Nexus.PortalAgendamento.Library     # Biblioteca de Classes (Core)
+└── 📂 Nexus.PortalAgendamento.Library     # Core / Domain
     ├── 📂 Infrastructure
-    │   ├── 📂 Constants                   # Nomes de Procedures
-    │   ├── 📂 Domain                      # Modelos (Input/Output/Entity)
-    │   ├── 📂 Helper                      # Utilitários (PDF, Email)
-    │   ├── 📂 Repository                  # Acesso a Dados
+    │   ├── 📂 Domain                      # InputModels, ViewModels
+    │   ├── 📂 Helper                      # PdfHelper, EmailHelper
+    │   ├── 📂 Repository                  # Acesso ao SQL (Dapper)
     │   └── 📂 Services                    # Regras de Negócio
-    └── 📄 ServiceCollectionExtensions.cs  # Injeção de Dependência da Library
+    └── 📂 tessdata                        # Dados de treinamento OCR
+
+```
+
+```
 
 ```

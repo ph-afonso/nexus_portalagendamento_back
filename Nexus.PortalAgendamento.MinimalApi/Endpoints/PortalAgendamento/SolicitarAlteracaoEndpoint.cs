@@ -1,10 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
 using Nexus.Framework.Common;
 using Nexus.Framework.Data.Model.Result;
-using Nexus.PortalAgendamento.Library.Infrastructure.Services.Interfaces;
-using Nexus.PortalAgendamento.MinimalApi.Common;
 using Nexus.PortalAgendamento.Library.Infrastructure.Domain.InputModel;
 using Nexus.PortalAgendamento.Library.Infrastructure.Domain.ListModel;
+using Nexus.PortalAgendamento.Library.Infrastructure.Services.Interfaces;
+using Nexus.PortalAgendamento.MinimalApi.Common;
 
 namespace Nexus.PortalAgendamento.MinimalApi.Endpoints.PortalAgendamento;
 
@@ -13,27 +13,27 @@ public class SolicitarAlteracaoEndpoint : IEndpoint
     public static void Map(IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("portal-agendamento/solicitar-alteracao")
-            .WithTags("Solicitar Outra Data");
+            .WithTags("Solicitação de Alteração");
 
-        // GET: Carrega dados para a tela (Token + Notas)
         group.MapGet("/{identificadorCliente}", HandleGetAsync)
-            .WithName("ConsultarAlteracao")
-            .WithSummary("Obter Dados Solicitação")
+            .WithName("ConsultarDadosAlteracao")
+            .WithSummary("Obtém os dados iniciais para a tela de solicitação de nova data.")
+            .WithDescription("Valida o token do cliente e retorna a lista de notas fiscais disponíveis para reagendamento.")
             .Produces<NexusResult<ConfirmacaoOutputModel>>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest);
 
-        // POST: Executa a alteração (Grava nova data)
         group.MapPost("/", HandlePostAsync)
-            .WithName("ProcessarAlteracao")
-            .WithSummary("Agendar Com Outra Data")
+            .WithName("ProcessarAlteracaoData")
+            .WithSummary("Processa o agendamento para uma data e horário específicos.")
+            .WithDescription("Recebe a data/hora manual informada pelo usuário e realiza o agendamento no sistema.")
             .Produces<NexusResult<ConfirmacaoOutputModel>>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest);
     }
 
-    // --- HANDLE GET ---
     private static async Task<IResult> HandleGetAsync(
         [FromRoute] Guid identificadorCliente,
         [FromServices] IPortalAgendamentoService service,
+        [FromServices] ILogger<SolicitarAlteracaoEndpoint> logger,
         CancellationToken ct)
     {
         var result = new NexusResult<ConfirmacaoOutputModel>();
@@ -41,26 +41,32 @@ public class SolicitarAlteracaoEndpoint : IEndpoint
 
         try
         {
-            // 1. Validar Token
-            var validacao = await service.ValidarTokenAsync(new ValidadeTokenInputModel { IdentificadorCliente = identificadorCliente }, ct);
+            logger.LogInformation("[Alteracao_GET] Consultando dados. Cliente: {ClienteId}", identificadorCliente);
 
-            if (!validacao.IsSuccess || validacao.ResultData == null || !validacao.ResultData.TokenValido)
+            var validacao = await service.ValidarTokenAsync(
+                new ValidadeTokenInputModel { IdentificadorCliente = identificadorCliente }, ct);
+
+            if (!validacao.IsSuccess || validacao.ResultData is null || !validacao.ResultData.TokenValido)
             {
-                output.Mensagem = "Token inválido ou expirado.";
+                logger.LogWarning("[Alteracao_GET] Token inválido ou expirado. Cliente: {ClienteId}", identificadorCliente);
+
+                output.Mensagem = "O link de acesso é inválido ou expirou.";
                 result.ResultData = output;
-                result.AddDefaultSuccessMessage(); // Retorna 200 com msg de erro no corpo para o front tratar
+                result.AddDefaultSuccessMessage();
                 return Results.Ok(result);
             }
 
             output.Token = validacao.ResultData;
             output.DataSugestao = output.Token.DataSugestaoAgendamento;
 
-            // 2. Buscar Notas
             var notasData = await service.GetNotasConhecimento(identificadorCliente, ct);
             output.NotasFiscais = notasData?.NotasFiscais ?? new List<NotaFiscalOutputModel>();
 
             if (!output.NotasFiscais.Any())
+            {
+                logger.LogInformation("[Alteracao_GET] Nenhuma nota encontrada. Cliente: {ClienteId}", identificadorCliente);
                 output.Mensagem = "Nenhuma nota encontrada para alteração.";
+            }
 
             result.ResultData = output;
             result.AddDefaultSuccessMessage();
@@ -68,15 +74,16 @@ public class SolicitarAlteracaoEndpoint : IEndpoint
         }
         catch (Exception ex)
         {
+            logger.LogError(ex, "[Alteracao_GET] Erro interno não tratado. Cliente: {ClienteId}", identificadorCliente);
             result.AddFailureMessage($"Erro interno: {ex.Message}");
             return Results.BadRequest(result);
         }
     }
 
-    // --- HANDLE POST ---
     private static async Task<IResult> HandlePostAsync(
         [FromBody] SolicitarAlteracaoInputModel input,
         [FromServices] IPortalAgendamentoService service,
+        [FromServices] ILogger<SolicitarAlteracaoEndpoint> logger,
         CancellationToken ct)
     {
         var result = new NexusResult<ConfirmacaoOutputModel>();
@@ -84,45 +91,53 @@ public class SolicitarAlteracaoEndpoint : IEndpoint
 
         try
         {
-            // 1. Validar Token novamente (Segurança)
-            var validacao = await service.ValidarTokenAsync(new ValidadeTokenInputModel { IdentificadorCliente = input.IdentificadorCliente }, ct);
+            logger.LogInformation("[Alteracao_POST] Solicitando reagendamento. Cliente: {ClienteId} | Data: {Data} {Hora}",
+                input.IdentificadorCliente, input.DataSolicitada.ToShortDateString(), input.HoraSolicitada);
 
-            if (!validacao.IsSuccess || validacao.ResultData == null || !validacao.ResultData.TokenValido)
+            var validacao = await service.ValidarTokenAsync(
+                new ValidadeTokenInputModel { IdentificadorCliente = input.IdentificadorCliente }, ct);
+
+            if (!validacao.IsSuccess || validacao.ResultData is null || !validacao.ResultData.TokenValido)
             {
+                logger.LogWarning("[Alteracao_POST] Token inválido. Cliente: {ClienteId}", input.IdentificadorCliente);
+
                 output.Mensagem = "Token inválido ou expirado.";
                 result.ResultData = output;
+                result.AddDefaultSuccessMessage();
                 return Results.Ok(result);
             }
             output.Token = validacao.ResultData;
 
-            // 2. Buscar Notas (para processar sobre elas)
+            if (input.DataSolicitada.Date < DateTime.Now.Date)
+            {
+                logger.LogWarning("[Alteracao_POST] Tentativa de data retroativa: {Data}", input.DataSolicitada);
+
+                output.Mensagem = "A data solicitada não pode ser anterior a hoje.";
+                result.ResultData = output;
+                result.AddDefaultSuccessMessage();
+                return Results.Ok(result);
+            }
+
             var notasData = await service.GetNotasConhecimento(input.IdentificadorCliente, ct);
             output.NotasFiscais = notasData?.NotasFiscais ?? new List<NotaFiscalOutputModel>();
 
             if (!output.NotasFiscais.Any())
             {
-                output.Mensagem = "Nenhuma nota disponível para agendamento.";
-                result.ResultData = output;
+                result.AddFailureMessage("Nenhuma nota disponível para agendamento.");
                 return Results.Ok(result);
             }
 
-            // 3. Montar Data Final (Data + Hora Solicitada)
-            // A lógica de negócio no Service usa DateTime para gravar.
-            // Se a hora vier "08:00", combinamos com a DataSolicitada.
             DateTime dataFinal = input.DataSolicitada.Date;
+
             if (TimeSpan.TryParse(input.HoraSolicitada, out var time))
             {
                 dataFinal = dataFinal.Add(time);
             }
             else
             {
-                dataFinal = dataFinal.AddHours(8); // Fallback padrão
+                dataFinal = dataFinal.AddHours(8);
             }
 
-            // 4. Processar Agendamento (Reutilizando a lógica robusta do Service)
-            // Nota: O service atual usa um Periodo fixo (4) no repository. 
-            // Se precisar passar o input.Periodo, teríamos que alterar a assinatura do Service.
-            // Por enquanto, enviamos a Data/Hora escolhida pelo usuário.
             var processamento = await service.ConfirmarAgendamento(
                 input.IdentificadorCliente,
                 dataFinal,
@@ -131,17 +146,20 @@ public class SolicitarAlteracaoEndpoint : IEndpoint
 
             if (!processamento.IsSuccess)
             {
-                result.AddFailureMessage("Falha técnica ao processar a alteração.");
+                logger.LogError("[Alteracao_POST] Falha técnica no serviço. Erro: {Erro}", processamento.Messages.FirstOrDefault()?.Description);
+                result.AddFailureMessage("Falha técnica ao processar a solicitação.");
                 return Results.BadRequest(result);
             }
 
             output.ResultadoProcessamento = processamento.ResultData ?? new List<AgendamentoDetalheModel>();
 
-            // 5. Mensagem Final
-            int qtdSucesso = output.ResultadoProcessamento.Count(x => x.Agendado);
+            int qtdSucesso = output.ResultadoProcessamento.Count(x => x.Agendado || x.Status == "Já Agendado");
+
             output.Mensagem = qtdSucesso > 0
-                ? $"Solicitação de alteração realizada para {dataFinal:dd/MM/yyyy HH:mm}."
-                : "Não foi possível realizar a alteração. Verifique os status.";
+                ? $"Solicitação de alteração realizada com sucesso para {dataFinal:dd/MM/yyyy HH:mm}."
+                : "Não foi possível realizar a alteração. Verifique o status das notas.";
+
+            logger.LogInformation("[Alteracao_POST] Finalizado. Sucessos: {Qtd}. Cliente: {ClienteId}", qtdSucesso, input.IdentificadorCliente);
 
             result.ResultData = output;
             result.AddDefaultSuccessMessage();
@@ -149,6 +167,7 @@ public class SolicitarAlteracaoEndpoint : IEndpoint
         }
         catch (Exception ex)
         {
+            logger.LogError(ex, "[Alteracao_POST] Erro crítico. Cliente: {ClienteId}", input.IdentificadorCliente);
             result.AddFailureMessage($"Erro ao solicitar alteração: {ex.Message}");
             return Results.BadRequest(result);
         }

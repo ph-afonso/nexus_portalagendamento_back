@@ -1,22 +1,37 @@
 ﻿{
   "$schema": "https://json.schemastore.org/launchsettings.json",
   "profiles": {
-    "http": {
-      "commandName": "Project",
-      "dotnetRunMessages": true,
-      "launchBrowser": false,
-      "applicationUrl": "http://localhost:5272",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "https": {
+    "Nexus (Production)": {
       "commandName": "Project",
       "dotnetRunMessages": true,
       "launchBrowser": false,
       "applicationUrl": "https://localhost:7144;http://localhost:5272",
       "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
+        "ASPNETCORE_ENVIRONMENT": "Production",
+        "TRATATIVAS_BASE_PATH": "C:\\Temp\\Nexus_Uploads",
+        "TRATATIVAS_BASE_PATH_REPO": "\\\\arquivos.tragetta.com.br\\DESENVOLVIMENTO$\\Repository\\TratativasOcorrencias"
+      }
+    },
+    "Nexus (Development)": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": true,
+      "launchUrl": "scalar/v1",
+      "applicationUrl": "https://localhost:7144;http://localhost:5272",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "TRATATIVAS_BASE_PATH": "C:\\Temp\\Nexus_Uploads"
+      }
+    },
+    "Nexus (Simulation)": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": true,
+      "launchUrl": "scalar/v1",
+      "applicationUrl": "https://localhost:7144;http://localhost:5272",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Simulation",
+        "TRATATIVAS_BASE_PATH": "C:\\Temp\\Nexus_Uploads"
       }
     }
   }

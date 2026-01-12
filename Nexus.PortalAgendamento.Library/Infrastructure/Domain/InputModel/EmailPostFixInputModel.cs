@@ -4,10 +4,6 @@ using Nexus.Framework.Data.Attributes;
 using Nexus.Framework.Data.Model.Input;
 
 namespace Nexus.PortalAgendamento.Library.Infrastructure.Domain.InputModel;
-
-/// <summary>
-/// Modelo de entrada para operações de Bancos
-/// </summary>
 public class EmailPostFixInputModel : StoredProcedureInputModel
 {
 

@@ -93,7 +93,6 @@ public static class EmailTemplateBuilder
         int sucesso = resultados.Count(x => x.Agendado);
         int falha = total - sucesso;
 
-        // 1. CABEÇALHO HTML (ESTILO TRAGETTA COMPLETO)
         sb.Append("""
         <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
         <html xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
@@ -162,7 +161,6 @@ public static class EmailTemplateBuilder
                                             <td class="text pb20" style="color:#424243; font-family:'Noto Sans', Arial,sans-serif; font-size:16px; line-height:26px; text-align:left; padding-bottom: 20px;">
         """);
 
-        // INJETANDO DADOS DINÂMICOS
         sb.Append($"O processamento automático de agendamento foi finalizado em <b>{DateTime.Now:dd/MM/yyyy HH:mm}</b>.<br/><br/>");
 
         sb.Append("""
@@ -198,16 +196,14 @@ public static class EmailTemplateBuilder
                                                     <tbody>
         """);
 
-        // LOOP DAS LINHAS DA TABELA
         foreach (var item in resultados)
         {
-            string corTexto = item.Agendado ? "#28a745" : "#dc3545"; // Verde ou Vermelho
+            string corTexto = item.Agendado ? "#28a745" : "#dc3545";
             string bgRow = item.Agendado ? "#ffffff" : "#fff5f5";
 
-            // Azul para "Já Agendado"
             if (item.Status != null && item.Status.Contains("Já Agendado", StringComparison.OrdinalIgnoreCase))
             {
-                corTexto = "#17a2b8"; // Azul Tragetta
+                corTexto = "#17a2b8";
                 bgRow = "#f0fbff";
             }
 
@@ -215,10 +211,8 @@ public static class EmailTemplateBuilder
                 ? $"{item.DataAgendada} {item.HoraAgendada}"
                 : "-";
 
-            // Formatação NF-Série
             var nfSerie = $"{item.NrNota}-{item.Serie}";
 
-            // Proteção HTML
             var pedidoSafe = HtmlEncode(item.Pedido);
             var nfSafe = HtmlEncode(nfSerie);
             var fornSafe = HtmlEncode(item.NomeFornecedor);
@@ -238,7 +232,6 @@ public static class EmailTemplateBuilder
                 </tr>");
         }
 
-        // 3. RODAPÉ (Assinatura e Redes Sociais)
         sb.Append("""
                                                     </tbody>
                                                 </table>

@@ -31,7 +31,6 @@ public class PortalAgendamentoRepository : ProcedureRepository, IPortalAgendamen
         _log = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    // 1. VALIDAR TOKEN
     public async Task<NexusResult<ValidadeTokenOutputModel>> ValidarTokenAsync(ValidadeTokenInputModel model, CancellationToken cancellationToken = default)
     {
         var nexus = new NexusResult<ValidadeTokenOutputModel>();
@@ -48,7 +47,6 @@ public class PortalAgendamentoRepository : ProcedureRepository, IPortalAgendamen
             await using var connection = new SqlConnection(cs);
             await connection.OpenAsync(cancellationToken);
 
-            // Ajustado para as colunas corretas (GERACAO/ATUALIZACAO)
             const string sql = @"
             SELECT TOP 1
                  DT_GERACAO_TOKEN        AS DataGeracaoToken
@@ -82,7 +80,6 @@ public class PortalAgendamentoRepository : ProcedureRepository, IPortalAgendamen
         }
     }
 
-    // 2. BUSCAR NOTAS
     public async Task<NexusResult<PortalAgendamentoOutputModel>> GetNotasConhecimento(Guid? identificadorCliente, CancellationToken cancellationToken = default)
     {
         var nexus = new NexusResult<PortalAgendamentoOutputModel>();
@@ -148,7 +145,6 @@ public class PortalAgendamentoRepository : ProcedureRepository, IPortalAgendamen
         }
     }
 
-    // 3. OCORRÊNCIAS
     public async Task<OcorrenciaAbertaModel?> GetOcorrenciaAbertaAsync(long nrNota, int codFilial, CancellationToken cancellationToken = default)
     {
         try
@@ -204,7 +200,6 @@ public class PortalAgendamentoRepository : ProcedureRepository, IPortalAgendamen
             await using var connection = new SqlConnection(cs);
             await connection.OpenAsync(cancellationToken);
 
-            // A procedure espera TODOS esses parâmetros. Mesmo passando NULL, eles devem existir no objeto anônimo do Dapper.
             const string sql = @"
                 DECLARE @DATETIME DATETIME = GETDATE();
                 
@@ -231,7 +226,6 @@ public class PortalAgendamentoRepository : ProcedureRepository, IPortalAgendamen
                 CodFilial = ocorrencia.CodFilial,
                 CodOcorrenciaTipo = ocorrencia.CodOcorrenciaTipo,
 
-                // Passando NULL explicitamente para satisfazer a assinatura da procedure
                 DataAgendamento = (DateTime?)null,
                 HoraInicial = (string?)null,
                 HoraFinal = (string?)null,
@@ -260,11 +254,10 @@ public class PortalAgendamentoRepository : ProcedureRepository, IPortalAgendamen
             string horaStr = input.DataAgendamento.ToString("HH:mm");
             if (horaStr == "00:00") horaStr = "08:00";
 
-            // CORREÇÃO: Agrupar por Impresso e Filial para evitar chamadas duplicadas para o mesmo CTe
             var conhecimentosDistintos = input.Notas
                 .Where(n => n.NrImpressoConhecimentos.HasValue)
                 .GroupBy(n => new { n.CodFiliais, n.NrImpressoConhecimentos })
-                .Select(g => g.First()) // Pega um representante do grupo
+                .Select(g => g.First())
                 .ToList();
 
             foreach (var nota in conhecimentosDistintos)
@@ -331,7 +324,6 @@ public class PortalAgendamentoRepository : ProcedureRepository, IPortalAgendamen
         }
     }
 
-    // 5. EMAILS
     public async Task<List<ClientesRegrasAgendamentoEmail>> GetDestinatariosEmailAsync(int? codFornecedor, int? codRecebedor, CancellationToken cancellationToken = default)
     {
         if (codFornecedor == null && codRecebedor == null) return new List<ClientesRegrasAgendamentoEmail>();
@@ -405,8 +397,7 @@ public class PortalAgendamentoRepository : ProcedureRepository, IPortalAgendamen
 
         try
         {
-            // 1. SALVAR ARQUIVO NO DISCO
-            var basePath = Environment.GetEnvironmentVariable("TRATATIVAS_BASE_PATH")
+            var basePath = Environment.GetEnvironmentVariable("TRATATIVAS_BASE_PATH_REPO")
                             ?? @"\\arquivos.tragetta.com.br\DESENVOLVIMENTO$\Repository\TratativasOcorrencias";
 
             if (!Directory.Exists(basePath) && !basePath.StartsWith(@"\\"))
@@ -421,8 +412,6 @@ public class PortalAgendamentoRepository : ProcedureRepository, IPortalAgendamen
 
             await File.WriteAllBytesAsync(diskPath, arquivoBytes, ct);
 
-            // 2. INSERTS COM RECUPERAÇÃO DA DATA REAL (OUTPUT)
-            // Criamos uma tabela temporária em memória (@TabelaData) para pegar a data exata que o SQL gerou.
             const string sqlScript = @"
             DECLARE @TabelaData TABLE (DataGravada DATETIME);
             DECLARE @DataFinal DATETIME;

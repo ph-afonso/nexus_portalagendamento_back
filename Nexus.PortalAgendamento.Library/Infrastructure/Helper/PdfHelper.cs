@@ -17,9 +17,6 @@ namespace Nexus.PortalAgendamento.Library.Infrastructure.Helper
             _logger = logger;
         }
 
-        // =========================================================================
-        // EXTRAÇÃO DE TEXTO NATIVO (iText7)
-        // =========================================================================
         public (List<string> Datas, List<string> Horas) ExtrairDadosDoPdf(string caminhoPdf)
         {
             var datas = new HashSet<string>();
@@ -61,12 +58,8 @@ namespace Nexus.PortalAgendamento.Library.Infrastructure.Helper
             var datas = new HashSet<string>();
             var horas = new HashSet<string>();
 
-            // Limpeza básica
             string textoLimpo = textoOriginal.Replace("\"", "").Replace("|", " ").Trim();
 
-            // 1. EXTRAÇÃO DE DATA
-            // Regex estrito: Procura "Data" ou "Dt", separador opcional, e o número.
-            // Ignora "Data Emissão" porque a palavra "Emissão" não cabe no padrão.
             var regexData = new Regex(@"(?:Data|Dt\.?)\s*[:.]?\s*(\d{2}[./-]\d{2}[./-]\d{4})", RegexOptions.IgnoreCase);
 
             foreach (Match m in regexData.Matches(textoLimpo))
@@ -75,7 +68,6 @@ namespace Nexus.PortalAgendamento.Library.Infrastructure.Helper
                 if (ValidarData(dataFmt)) datas.Add(dataFmt);
             }
 
-            // 2. EXTRAÇÃO DE HORA
             var regexHora = new Regex(@"(?:Hor[aá]rio|Hora)\s*[:.]?\s*(\d{2}[:.]\d{2}(?:[:.]\d{2})?)", RegexOptions.IgnoreCase);
 
             foreach (Match m in regexHora.Matches(textoLimpo))
@@ -87,15 +79,13 @@ namespace Nexus.PortalAgendamento.Library.Infrastructure.Helper
                 }
             }
 
-            // 3. FALLBACK (PLANO B)
-            // Se o regex específico não achou nada, varre por qualquer data válida no futuro.
             if (datas.Count == 0)
             {
                 var regexGeral = new Regex(@"(\d{2}[./-]\d{2}[./-]\d{4})");
                 foreach (Match m in regexGeral.Matches(textoLimpo))
                 {
                     string d = NormalizarData(m.Value);
-                    // O ValidarData agora garante que não pegamos datas passadas
+
                     if (ValidarData(d)) datas.Add(d);
                 }
             }
@@ -112,9 +102,7 @@ namespace Nexus.PortalAgendamento.Library.Infrastructure.Helper
             var hoje = DateTime.Now.Date;
             if (DateTime.TryParseExact(input, "dd/MM/yyyy", new CultureInfo("pt-BR"), DateTimeStyles.None, out DateTime dt))
             {
-                // CORREÇÃO: Bloqueia datas passadas. Aceita apenas Hoje ou Futuro.
-                // Anterior: dt >= hoje.AddDays(-60)
-                // Novo: dt >= hoje
+
                 if (dt >= hoje && dt <= hoje.AddYears(2)) return true;
             }
             return false;

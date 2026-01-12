@@ -11,13 +11,8 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddApplicationInfrastructure(this IServiceCollection services)
     {
-        // 1. Helpers
         services.AddScoped<PdfHelper>();
-
-        // 2. Repositories
         services.AddScoped<IPortalAgendamentoRepository, PortalAgendamentoRepository>();
-
-        // 3. Services
         services.AddScoped<IPortalAgendamentoService, PortalAgendamentoService>();
 
         return services;

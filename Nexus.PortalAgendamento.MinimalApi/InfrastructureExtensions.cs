@@ -14,7 +14,6 @@ public static class InfrastructureExtensions
     /// </summary>
     public static IServiceCollection AddInfrastructureServices(this IServiceCollection services, IConfiguration configuration)
     {
-        // Adiciona os serviços de aplicação
         services.AddApplicationInfrastructure();
         
         return services;

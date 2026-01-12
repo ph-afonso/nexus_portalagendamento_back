@@ -149,7 +149,7 @@ public class PortalAgendamentoService : IPortalAgendamentoService
 
                     await _repository.VincularAnexoOcorrenciaAsync(
                         ocorrencia.IdOcorrencia,
-                        "comprovante_agendamento.pdf",
+                        "voucher_portal_csdpa.pdf",
                         arquivoBytes,
                         ct
                     );
@@ -189,7 +189,6 @@ public class PortalAgendamentoService : IPortalAgendamentoService
         result.ResultData = output;
         result.AddDefaultSuccessMessage();
 
-        // Opcional: Limpar arquivo
         try { File.Delete(filePath); } catch { }
 
         return result;
